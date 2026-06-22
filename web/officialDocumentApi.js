@@ -1,8 +1,10 @@
-const OFFICIAL_DOCUMENT_DRAFT_URL =
-  'http://127.0.0.1:8787/official-documents/draft';
-const OFFICIAL_DOCUMENT_PDF_URL =
-  'http://127.0.0.1:8787/official-documents/pdf';
-const REQUEST_TIMEOUT_MS = 60000;
+import { buildBackendUrl } from './config.js';
+
+const OFFICIAL_DOCUMENT_DRAFT_URL = buildBackendUrl(
+  '/official-documents/draft',
+);
+const OFFICIAL_DOCUMENT_PDF_URL = buildBackendUrl('/official-documents/pdf');
+const REQUEST_TIMEOUT_MS = 120000;
 
 async function readErrorMessage(response, fallback) {
   const payload = await response.json().catch(() => null);

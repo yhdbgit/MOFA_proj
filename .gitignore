@@ -45,14 +45,9 @@ yarn-error.*
 __pycache__/
 *.pyc
 .venv/
-mock-backend/.venv/
 
 # generated native folders
 /ios
 /android
 frontend/ios
 frontend/android
-
-# local vector stores / backend runtime data
-mock-backend/chroma/
-mock-backend/data/processed/

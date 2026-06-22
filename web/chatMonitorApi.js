@@ -1,4 +1,6 @@
-const CHAT_MESSAGES_URL = 'http://127.0.0.1:8787/chat/messages';
+import { buildBackendUrl } from './config.js';
+
+const CHAT_MESSAGES_URL = buildBackendUrl('/chat/messages');
 
 export async function fetchLatestChatMessages() {
   const response = await fetch(CHAT_MESSAGES_URL, {

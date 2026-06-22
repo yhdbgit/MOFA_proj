@@ -18,6 +18,7 @@ const elements = {
   chatSubtitle: document.getElementById('chatSubtitle'),
   chatTitle: document.getElementById('chatTitle'),
   connectionBadge: document.getElementById('connectionBadge'),
+  connectionLabel: document.getElementById('connectionLabel'),
   closeDocumentPanelButton: document.getElementById(
     'closeDocumentPanelButton',
   ),
@@ -86,7 +87,7 @@ function setConnectionStatus(status) {
   };
 
   elements.connectionBadge.className = `connection-badge ${status}`;
-  elements.connectionBadge.lastChild.textContent = labels[status];
+  elements.connectionLabel.textContent = labels[status];
 }
 
 function selectCurrentConversation() {
@@ -267,7 +268,7 @@ async function pollLatestMessages() {
 
       render();
     }
-  } catch (error) {
+  } catch {
     setConnectionStatus('offline');
   } finally {
     window.setTimeout(pollLatestMessages, POLL_INTERVAL_MS);

@@ -366,6 +366,7 @@ export default function HomeScreen({ navigation }) {
       ROUTES.AI_CHAT,
       initialMessage ? { initialMessage } : undefined,
     );
+    setChatMessage('');
   }, [chatMessage, navigateToRoute]);
 
   const handleFeaturePress = useCallback(

@@ -76,7 +76,7 @@ function MessageBubble({ item }) {
   );
 }
 
-export default function ChatScreen({ route }) {
+export default function ChatScreen({ navigation, route }) {
   const [messages, setMessages] = useState([INITIAL_ASSISTANT_MESSAGE]);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -86,8 +86,9 @@ export default function ChatScreen({ route }) {
   // NOTE: state가 반영되기 전 연속 탭도 차단하기 위해 즉시 갱신되는 ref를 함께 쓴다.
   const isSendingRef = useRef(false);
 
-  // 홈 화면에서 전달한 첫 질문은 화면이 다시 렌더링되어도 한 번만 전송한다.
-  const initialMessageRef = useRef(route?.params?.initialMessage?.trim() ?? '');
+  // 홈 화면에서 전달한 질문은 route 상태가 갱신되기 전 중복 렌더링되어도 한 번만 전송한다.
+  const handledInitialMessageRef = useRef(null);
+  const initialMessage = route?.params?.initialMessage?.trim() ?? '';
 
   const canSend = inputText.trim().length > 0 && !isSending;
 
@@ -176,15 +177,19 @@ export default function ChatScreen({ route }) {
   }, [isSending]);
 
   useEffect(() => {
-    const initialMessage = initialMessageRef.current;
-
     if (!initialMessage) {
+      handledInitialMessageRef.current = null;
       return;
     }
 
-    initialMessageRef.current = '';
+    if (handledInitialMessageRef.current === initialMessage) {
+      return;
+    }
+
+    handledInitialMessageRef.current = initialMessage;
+    navigation.setParams({ initialMessage: undefined });
     sendMessage(initialMessage);
-  }, [sendMessage]);
+  }, [initialMessage, navigation, sendMessage]);
 
   // 새 메시지와 답변 작성 표시가 추가될 때 항상 최신 대화가 보이도록 이동한다.
   useEffect(() => {
