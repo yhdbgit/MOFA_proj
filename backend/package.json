@@ -1,0 +1,17 @@
+{
+  "name": "mofaapp-mock-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "venv": "node scripts/python-runner.js -m venv .venv",
+    "install:python": "node scripts/python-runner.js -m pip install -r requirements.txt",
+    "dev": "node scripts/python-runner.js main.py",
+    "chat-server": "npm run dev",
+    "ingest:legal": "node scripts/python-runner.js ingest_legal.py",
+    "ingest:manuals": "node scripts/python-runner.js ingest_manuals.py",
+    "ingest:countries": "node scripts/python-runner.js ingest_countries.py",
+    "search:legal": "node scripts/python-runner.js search_legal.py",
+    "search:manuals": "node scripts/python-runner.js search_manuals.py"
+  }
+}

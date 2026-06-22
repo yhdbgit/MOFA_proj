@@ -5,9 +5,13 @@ node_modules/
 
 # Expo
 .expo/
+frontend/.expo/
 dist/
+frontend/dist/
 web-build/
+frontend/web-build/
 expo-env.d.ts
+frontend/expo-env.d.ts
 
 # Native
 .kotlin/
@@ -31,11 +35,24 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
 
 # typescript
 *.tsbuildinfo
 
+# Python
+__pycache__/
+*.pyc
+.venv/
+mock-backend/.venv/
+
 # generated native folders
 /ios
 /android
+frontend/ios
+frontend/android
+
+# local vector stores / backend runtime data
+mock-backend/chroma/
+mock-backend/data/processed/
