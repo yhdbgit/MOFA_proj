@@ -1,4 +1,4 @@
-# MOFAapp Admin Web
+# MOFAapp Web
 
 현재 로컬 백엔드의 최신 단일 상담을 확인하는 테스트 웹입니다. DB, 다중 채팅방, WebSocket 없이 `GET /chat/messages`를 1초마다 조회합니다. 상담 내용을 기반으로 편집 가능한 공문 초안을 만들고 PDF로 저장할 수도 있습니다.
 
