@@ -86,14 +86,7 @@ python3 --version
 ### 2. 저장소 받기
 
 ```bash
-git clone https://github.com/yhdbgit/MOFA_proj.git
-cd MOFA_proj
-```
-
-이미 저장소를 받은 경우에는 프로젝트 루트에서 최신 코드를 가져옵니다.
-
-```bash
-git pull origin main
+https://github.com/yhdbgit/MOFA_proj 에서 전체 코드 압출파일 저장
 ```
 
 ### 3. 백엔드 설치
@@ -107,24 +100,16 @@ npm run install:python
 ```
 
 환경변수 파일을 생성합니다.
-
-macOS/Linux:
-
 ```bash
-cp .env.example .env
-```
-
-Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
+.env파일 생성
+.env.example 내용 복사 붙여넣기
 ```
 
 생성한 `backend/.env`에서 다음 값을 실제 Gemini API 키로 교체합니다.
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key
-GEMINI_MODEL=gemini-3.5-flash
+CONSULAR_CHAT_HOST=0.0.0.0
 ```
 
 기본 설정 전체는 `backend/.env.example`에서 확인할 수 있습니다. `.env`는 Git에 포함되지 않습니다.
@@ -156,22 +141,14 @@ npm ci
 
 `npm ci`는 `frontend/package-lock.json`에 기록된 버전 그대로 설치합니다.
 
-기본 API 주소는 iOS Simulator 및 같은 컴퓨터에서 실행하는 환경을 기준으로 `http://127.0.0.1:8787/chat`입니다. 주소를 변경해야 할 때만 환경변수 파일을 생성합니다.
-
-macOS/Linux:
-
+환경변수 파일을 생성합니다.
 ```bash
-cp .env.example .env
-```
-
-Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
+.env파일 생성
+.env.example 내용 복사 붙여넣기
 ```
 
 ```env
-EXPO_PUBLIC_CONSULAR_CHAT_API_URL=http://127.0.0.1:8787/chat
+EXPO_PUBLIC_CONSULAR_CHAT_API_URL=http://10.0.2.2:8787/chat
 ```
 
 환경변수를 변경한 뒤에는 실행 중인 Expo 개발 서버를 종료하고 다시 시작해야 합니다.
@@ -193,13 +170,7 @@ cd backend
 npm run dev
 ```
 
-정상 실행 시 기본 주소는 `http://127.0.0.1:8787`입니다.
-
-브라우저 또는 터미널에서 상태를 확인할 수 있습니다.
-
-```bash
-curl http://127.0.0.1:8787/health
-```
+정상 실행 시 기본 주소는 `http://10.0.2.2:8787`입니다.
 
 ### 터미널 2: 관리자 웹
 
@@ -208,62 +179,16 @@ cd web
 npm run dev
 ```
 
-브라우저에서 `http://127.0.0.1:4173`을 엽니다.
+브라우저에서 `http://10.0.2.2:8787`을 엽니다.
 
 ### 터미널 3: 모바일 앱
 
-iOS Simulator:
-
-```bash
-cd frontend
-npm run ios
-```
-
-Android Emulator 또는 연결된 Android 기기:
+Android Emulator:
 
 ```bash
 cd frontend
 npm run android
 ```
-
-Expo 개발 서버만 실행한 뒤 터미널 메뉴에서 플랫폼을 선택하거나 실기기 Expo Go로 QR 코드를 스캔하려면:
-
-```bash
-cd frontend
-npm start
-```
-
-Expo 터미널에서 `i`는 iOS Simulator, `a`는 Android 실행에 사용합니다.
-
-## 실행 환경별 백엔드 주소
-
-| 실행 환경 | `backend/.env`의 host | `frontend/.env`의 API URL |
-| --- | --- | --- |
-| iOS Simulator | `127.0.0.1` | `http://127.0.0.1:8787/chat` |
-| Android Emulator | `0.0.0.0` | `http://10.0.2.2:8787/chat` |
-| iOS/Android 실기기 | `0.0.0.0` | `http://개발PC의_로컬_IP:8787/chat` |
-
-실기기에서는 개발 PC와 휴대폰이 같은 네트워크에 연결되어 있어야 합니다. macOS의 로컬 IP는 다음 명령으로 확인할 수 있습니다.
-
-```bash
-ipconfig getifaddr en0
-```
-
-예를 들어 PC 주소가 `192.168.0.10`이면 다음과 같이 설정합니다.
-
-`backend/.env`:
-
-```env
-CONSULAR_CHAT_HOST=0.0.0.0
-```
-
-`frontend/.env`:
-
-```env
-EXPO_PUBLIC_CONSULAR_CHAT_API_URL=http://192.168.0.10:8787/chat
-```
-
-관리자 웹을 백엔드와 같은 PC에서 열 때는 `web/config.js`의 기본 `127.0.0.1` 주소를 그대로 사용할 수 있습니다.
 
 ## API 계약
 
@@ -311,7 +236,6 @@ Content-Type: application/json
 2. Legal, Manual, Country Retriever Agent가 ChromaDB의 법률·대처매뉴얼·국가별 정보를 병렬 검색합니다.
 3. Answer Agent가 상담 내용과 검색 결과를 Gemini에 전달합니다.
 4. 백엔드는 생성된 답변을 앱에 반환하고 관리자 웹용 메모리에도 저장합니다.
-5. Gemini가 HTTP 503을 반환하면 약 1초, 2초, 4초 간격으로 최대 3회 재시도합니다.
 
 현재 사전 구축된 국가별 자료는 가나, 네팔, 멕시코입니다. 해당 자료가 없는 국가는 다른 국가 자료를 대신 사용하지 않고 법률·매뉴얼 기반의 일반 안내만 생성합니다.
 
@@ -332,8 +256,6 @@ npm run search:manuals -- "해외에서 여권을 분실했어요"
 5. Gemini가 대화에서 확인한 정보만 사용해 공문 초안을 생성하고 누락정보를 표시합니다.
 6. 공무원이 브라우저에서 초안을 수정하고 `저장`을 누르면 `/official-documents/pdf`가 PDF 파일을 생성합니다.
 
-공문 패널은 상담 내용이 변경되면 이전 초안을 초기화합니다. 생성된 PDF의 한글 폰트를 운영체제에서 찾지 못하면 `backend/.env`의 `MOFA_PDF_FONT_PATH`에 사용할 TTF 폰트의 절대경로를 지정합니다.
-
 ## 타임아웃과 오류 처리
 
 - 모바일 앱은 백엔드 응답을 최대 120초 기다립니다.
@@ -343,31 +265,9 @@ npm run search:manuals -- "해외에서 여권을 분실했어요"
 - 모바일 앱이 `Fetch request has been canceled`를 반환하더라도 사용자에게는 통일된 시간 초과 메시지를 표시합니다.
 
 ## 데이터와 보안 주의사항
-
 - Gemini API 키는 반드시 `backend/.env`에만 저장합니다.
 - `EXPO_PUBLIC_` 환경변수는 앱 번들에 공개되므로 비밀값을 넣지 않습니다.
 - `.env`, `node_modules`, `.venv`, Expo 생성 폴더는 Git에서 제외됩니다.
 - `AGENT_DEBUG_LOGS=true`는 상담 내용과 검색 결과를 터미널에 출력할 수 있으므로 필요한 경우에만 사용합니다.
 - 현재 상담 데이터는 DB가 아닌 백엔드 프로세스 메모리에만 존재하며 서버 종료 시 삭제됩니다.
 - 현재 구현은 로컬 개발 및 연동 검증용이며 실제 운영 환경에 필요한 인증, 권한 관리, 개인정보 저장 정책은 포함하지 않습니다.
-
-## 문제 해결
-
-### 앱에서 백엔드에 연결되지 않음
-
-- 백엔드가 먼저 실행됐는지 확인합니다.
-- `http://127.0.0.1:8787/health`가 열리는지 확인합니다.
-- Android Emulator 또는 실기기라면 위의 실행 환경별 주소를 적용합니다.
-- `.env` 변경 후 Expo 개발 서버를 재시작합니다.
-
-### `Address already in use` 오류
-
-포트 `8787` 또는 `4173`을 사용하는 기존 개발 서버를 종료한 뒤 다시 실행합니다.
-
-### Gemini 503 오류
-
-Gemini 서비스가 일시적으로 혼잡할 때 발생합니다. 백엔드는 자동 재시도 후에도 실패하면 사용자용 오류를 반환합니다. API 키의 할당량과 모델 사용 가능 여부도 함께 확인합니다.
-
-### PDF 저장 실패 또는 한글 폰트 오류
-
-`MOFA_PDF_FONT_PATH`에 시스템에 설치된 한글 TTF 폰트의 절대경로를 지정하고 백엔드를 재시작합니다.
