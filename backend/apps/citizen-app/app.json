@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "MOFA Citizen Test",
+    "slug": "mofa-citizen-test",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"]
+  }
+}

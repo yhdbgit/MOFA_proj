@@ -1,0 +1,21 @@
+{
+  "name": "mofa-citizen-app",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "expo": "latest",
+    "react": "latest",
+    "react-native": "latest",
+    "react-dom": "latest",
+    "react-native-web": "latest",
+    "@expo/metro-runtime": "latest"
+  },
+  "devDependencies": {}
+}

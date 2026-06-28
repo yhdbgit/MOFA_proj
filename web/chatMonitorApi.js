@@ -1,26 +1,123 @@
 import { buildBackendUrl } from './config.js';
 
-const CHAT_MESSAGES_URL = buildBackendUrl('/chat/messages');
+const CHAT_LIST_URL = buildBackendUrl('/api/chats');
+const EVENT_STREAM_URL = buildBackendUrl('/api/events/stream');
 
-export async function fetchLatestChatMessages() {
-  const response = await fetch(CHAT_MESSAGES_URL, {
+async function requestJson(url, fallbackMessage) {
+  const response = await fetch(url, {
     cache: 'no-store',
   });
 
+  const payload = await response.json().catch(() => null);
+
   if (!response.ok) {
-    throw new Error(`상담 조회 실패 (${response.status})`);
+    throw new Error(payload?.message || `${fallbackMessage} (${response.status})`);
   }
 
-  const payload = await response.json();
+  return payload;
+}
 
-  if (!Array.isArray(payload.messages)) {
-    throw new Error('상담 메시지 응답 형식이 올바르지 않습니다.');
+function toWebRole(senderType) {
+  if (senderType === 'CITIZEN') {
+    return 'user';
   }
 
-  return payload.messages.filter(
-    (message) =>
-      (message?.role === 'user' || message?.role === 'assistant') &&
-      typeof message?.text === 'string' &&
-      message.text.trim().length > 0,
+  if (senderType === 'STAFF') {
+    return 'staff';
+  }
+
+  return 'assistant';
+}
+
+function toSenderLabel(senderType) {
+  if (senderType === 'CITIZEN') {
+    return '민원인';
+  }
+
+  if (senderType === 'STAFF') {
+    return '담당자';
+  }
+
+  return 'AI 상담사';
+}
+
+function normalizeMessage(message) {
+  return {
+    id: message.id,
+    role: toWebRole(message.senderType),
+    senderType: message.senderType,
+    senderLabel: toSenderLabel(message.senderType),
+    text: message.content,
+    createdAt: message.createdAt,
+  };
+}
+
+export function normalizeChat(chat) {
+  const messages = Array.isArray(chat?.messages)
+    ? chat.messages
+        .filter(
+          (message) =>
+            typeof message?.id === 'string' &&
+            typeof message?.content === 'string' &&
+            message.content.trim().length > 0,
+        )
+        .map(normalizeMessage)
+    : [];
+
+  return {
+    id: chat.id,
+    citizenId: chat.citizenId,
+    countryCode: chat.countryCode,
+    status: chat.status,
+    createdAt: chat.createdAt,
+    messages,
+  };
+}
+
+export async function fetchChatList() {
+  const payload = await requestJson(CHAT_LIST_URL, '상담 목록 조회 실패');
+
+  if (!Array.isArray(payload)) {
+    throw new Error('상담 목록 응답 형식이 올바르지 않습니다.');
+  }
+
+  return payload.map(normalizeChat);
+}
+
+export async function fetchChat(chatId) {
+  const payload = await requestJson(
+    buildBackendUrl(`/api/chats/${chatId}`),
+    '상담 상세 조회 실패',
   );
+
+  return normalizeChat(payload);
+}
+
+export function openChatEventStream({ onEvent, onOpen, onError }) {
+  const source = new EventSource(EVENT_STREAM_URL);
+  const eventNames = [
+    'CONNECTED',
+    'CHAT_CREATED',
+    'CHAT_MESSAGE_CREATED',
+    'AGENT_RESULT_READY',
+  ];
+
+  source.onopen = () => {
+    onOpen?.();
+  };
+
+  source.onerror = (event) => {
+    onError?.(event);
+  };
+
+  eventNames.forEach((eventName) => {
+    source.addEventListener(eventName, (event) => {
+      onEvent?.({
+        name: eventName,
+        data: event.data,
+      });
+    });
+  });
+
+  return source;
 }

@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: mofa
+  datasource:
+    url: ${MOFA_DB_URL:jdbc:postgresql://localhost:5432/mofa}
+    username: ${MOFA_DB_USERNAME:mofa}
+    password: ${MOFA_DB_PASSWORD:mofa-local-password}
+  data:
+    redis:
+      host: ${MOFA_REDIS_HOST:localhost}
+      port: ${MOFA_REDIS_PORT:6379}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+mofa:
+  ai-agent:
+    base-url: http://localhost:8000
+  events:
+    redis-channel: mofa.events
+    redis-listener-enabled: true

@@ -1,0 +1,181 @@
+package com.a2d2.mofa.chat;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+
+import com.a2d2.mofa.agent.AgentAnalysisResult;
+import com.a2d2.mofa.agent.AgentClient;
+import com.a2d2.mofa.notification.NotificationEvent;
+import com.a2d2.mofa.notification.NotificationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class ChatService {
+
+	private final AgentClient agentClient;
+	private final ChatSessionRepository chatSessionRepository;
+	private final ChatMessageRepository chatMessageRepository;
+	private final NotificationEventPublisher eventPublisher;
+
+	public ChatService(
+			AgentClient agentClient,
+			ChatSessionRepository chatSessionRepository,
+			ChatMessageRepository chatMessageRepository,
+			NotificationEventPublisher eventPublisher
+	) {
+		this.agentClient = agentClient;
+		this.chatSessionRepository = chatSessionRepository;
+		this.chatMessageRepository = chatMessageRepository;
+		this.eventPublisher = eventPublisher;
+	}
+
+	@Transactional
+	public ChatSessionResponse createChat(CreateChatRequest request) {
+		ChatSessionEntity chatSession = new ChatSessionEntity(
+				request.citizenId(),
+				request.countryCode(),
+				"OPEN",
+				Instant.now()
+		);
+
+		chatSessionRepository.save(chatSession);
+		publishChatCreated(chatSession);
+		return toResponse(chatSession);
+	}
+
+	@Transactional
+	public ChatMessageProcessingResponse addMessage(String chatId, CreateChatMessageRequest request) {
+		ChatSessionEntity chatSession = findChat(chatId);
+		ChatMessageEntity chatMessage = new ChatMessageEntity(
+				chatSession,
+				request.senderType(),
+				request.content(),
+				Instant.now()
+		);
+
+		chatMessageRepository.save(chatMessage);
+		publishMessageCreated(chatSession, chatMessage);
+
+		AgentAnalysisResult agentResult = null;
+		if ("CITIZEN".equals(request.senderType())) {
+			agentResult = analyzeCitizenMessage(chatSession, chatMessage);
+			if ("COMPLETED".equals(agentResult.status()) && agentResult.citizenReply() != null) {
+				addAgentReply(chatSession, agentResult.citizenReply());
+			}
+		}
+
+		return new ChatMessageProcessingResponse(toResponse(chatMessage), agentResult);
+	}
+
+	@Transactional(readOnly = true)
+	public ChatSessionResponse getChat(String chatId) {
+		return toResponse(findChat(chatId));
+	}
+
+	@Transactional(readOnly = true)
+	public List<ChatSessionResponse> listChats() {
+		return chatSessionRepository.findAllByOrderByCreatedAtDesc()
+				.stream()
+				.map(this::toResponse)
+				.toList();
+	}
+
+	private ChatSessionEntity findChat(String chatId) {
+		return chatSessionRepository.findById(chatId)
+				.orElseThrow(() -> new ChatNotFoundException(chatId));
+	}
+
+	private AgentAnalysisResult analyzeCitizenMessage(
+			ChatSessionEntity chatSession,
+			ChatMessageEntity chatMessage
+	) {
+		List<AgentClient.ConversationMessage> conversationHistory = chatMessageRepository
+				.findByChatSessionIdOrderByCreatedAtAsc(chatSession.getId())
+				.stream()
+				.map(message -> new AgentClient.ConversationMessage(message.getSenderType(), message.getContent()))
+				.toList();
+
+		return agentClient.analyzeChat(new AgentClient.AnalyzeChatRequest(
+				chatSession.getId(),
+				chatMessage.getContent(),
+				chatSession.getCountryCode(),
+				conversationHistory
+		));
+	}
+
+	private void addAgentReply(ChatSessionEntity chatSession, String citizenReply) {
+		ChatMessageEntity agentMessage = new ChatMessageEntity(
+				chatSession,
+				"AGENT",
+				citizenReply,
+				Instant.now()
+		);
+
+		chatMessageRepository.save(agentMessage);
+		publishMessageCreated(chatSession, agentMessage);
+		publishAgentResultReady(chatSession);
+	}
+
+	private void publishChatCreated(ChatSessionEntity chatSession) {
+		eventPublisher.publish(new NotificationEvent(
+				"CHAT_CREATED",
+				chatSession.getId(),
+				Instant.now(),
+				Map.of(
+						"citizenId", chatSession.getCitizenId(),
+						"countryCode", chatSession.getCountryCode(),
+						"status", chatSession.getStatus()
+				)
+		));
+	}
+
+	private void publishMessageCreated(ChatSessionEntity chatSession, ChatMessageEntity chatMessage) {
+		eventPublisher.publish(new NotificationEvent(
+				"CHAT_MESSAGE_CREATED",
+				chatSession.getId(),
+				Instant.now(),
+				Map.of(
+						"messageId", chatMessage.getId(),
+						"senderType", chatMessage.getSenderType(),
+						"content", chatMessage.getContent()
+				)
+		));
+	}
+
+	private void publishAgentResultReady(ChatSessionEntity chatSession) {
+		eventPublisher.publish(new NotificationEvent(
+				"AGENT_RESULT_READY",
+				chatSession.getId(),
+				Instant.now(),
+				Map.of("status", "COMPLETED")
+		));
+	}
+
+	private ChatSessionResponse toResponse(ChatSessionEntity chatSession) {
+		List<ChatMessageResponse> messages = chatMessageRepository
+				.findByChatSessionIdOrderByCreatedAtAsc(chatSession.getId())
+				.stream()
+				.map(this::toResponse)
+				.toList();
+
+		return new ChatSessionResponse(
+				chatSession.getId(),
+				chatSession.getCitizenId(),
+				chatSession.getCountryCode(),
+				chatSession.getStatus(),
+				chatSession.getCreatedAt(),
+				messages
+		);
+	}
+
+	private ChatMessageResponse toResponse(ChatMessageEntity chatMessage) {
+		return new ChatMessageResponse(
+				chatMessage.getId(),
+				chatMessage.getSenderType(),
+				chatMessage.getContent(),
+				chatMessage.getCreatedAt()
+		);
+	}
+}

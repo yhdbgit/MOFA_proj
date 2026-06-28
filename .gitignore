@@ -5,13 +5,13 @@ node_modules/
 
 # Expo
 .expo/
-frontend/.expo/
+mobile/.expo/
 dist/
-frontend/dist/
+mobile/dist/
 web-build/
-frontend/web-build/
+mobile/web-build/
 expo-env.d.ts
-frontend/expo-env.d.ts
+mobile/expo-env.d.ts
 
 # Native
 .kotlin/
@@ -49,5 +49,5 @@ __pycache__/
 # generated native folders
 /ios
 /android
-frontend/ios
-frontend/android
+mobile/ios
+mobile/android

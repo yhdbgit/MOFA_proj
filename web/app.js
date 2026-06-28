@@ -1,17 +1,8 @@
-import { fetchLatestChatMessages } from './chatMonitorApi.js';
 import {
-  createOfficialDocumentDraft,
-  downloadOfficialDocumentPdf,
-} from './officialDocumentApi.js';
-import {
-  readDocumentDraft,
-  renderDocumentDraft,
-  renderDocumentEmpty,
-  renderDocumentError,
-  renderDocumentLoading,
-} from './documentPanel.js';
-
-const POLL_INTERVAL_MS = 1000;
+  fetchChat,
+  fetchChatList,
+  openChatEventStream,
+} from './chatMonitorApi.js';
 
 const elements = {
   activeConversationCount: document.getElementById('activeConversationCount'),
@@ -33,32 +24,9 @@ const elements = {
   saveDocumentButton: document.getElementById('saveDocumentButton'),
 };
 
-let latestMessages = [];
-let latestFingerprint = '';
-let isConversationSelected = false;
-let currentDocumentResult = null;
-let documentSourceFingerprint = '';
-let isDocumentGenerating = false;
-let isDocumentSaving = false;
-
-function setDocumentPanelOpen(isOpen) {
-  elements.documentPanel.classList.toggle('open', isOpen);
-  elements.documentPanel.setAttribute('aria-hidden', String(!isOpen));
-}
-
-function setDocumentStatus(message = '', type = '') {
-  elements.documentStatusText.textContent = message;
-  elements.documentStatusText.className = type;
-}
-
-function resetDocumentDraft() {
-  currentDocumentResult = null;
-  documentSourceFingerprint = '';
-  elements.saveDocumentButton.hidden = true;
-  setDocumentStatus();
-  renderDocumentEmpty(elements.documentPanelContent);
-  setDocumentPanelOpen(false);
-}
+const chatsById = new Map();
+let activeChatId = null;
+let eventSource = null;
 
 function createEmptyState(icon, title, description) {
   const container = document.createElement('div');
@@ -90,27 +58,121 @@ function setConnectionStatus(status) {
   elements.connectionLabel.textContent = labels[status];
 }
 
-function selectCurrentConversation() {
-  isConversationSelected = true;
+function closeDocumentPanel() {
+  elements.documentPanel.classList.remove('open');
+  elements.documentPanel.setAttribute('aria-hidden', 'true');
+}
+
+function disableDocumentGeneration() {
+  elements.generateDocumentButton.disabled = true;
+  elements.generateDocumentButton.textContent = '공문 생성';
+  elements.saveDocumentButton.hidden = true;
+  elements.documentStatusText.textContent = '';
+  elements.documentPanelContent.replaceChildren();
+  closeDocumentPanel();
+}
+
+function getChats() {
+  return [...chatsById.values()].sort((left, right) => {
+    return getActivityTime(right) - getActivityTime(left);
+  });
+}
+
+function getLastMessage(chat) {
+  return chat.messages.at(-1) ?? null;
+}
+
+function getActivityIso(chat) {
+  return getLastMessage(chat)?.createdAt ?? chat.createdAt;
+}
+
+function getActivityTime(chat) {
+  const timestamp = Date.parse(getActivityIso(chat));
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function formatChatId(chatId) {
+  if (typeof chatId !== 'string' || chatId.length <= 8) {
+    return chatId;
+  }
+
+  return `채팅방 ${chatId.slice(0, 8)}`;
+}
+
+function formatRelativeTime(isoValue) {
+  const timestamp = Date.parse(isoValue);
+
+  if (Number.isNaN(timestamp)) {
+    return '';
+  }
+
+  const diffSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  const diffWeeks = Math.floor(diffDays / 7);
+  const diffMonths = Math.floor(diffDays / 30);
+
+  if (diffMinutes < 1) {
+    return '방금 전';
+  }
+
+  if (diffHours < 1) {
+    return `${diffMinutes}분 전`;
+  }
+
+  if (diffDays < 1) {
+    return `${diffHours}시간 전`;
+  }
+
+  if (diffWeeks < 1) {
+    return `${diffDays}일 전`;
+  }
+
+  if (diffMonths < 1) {
+    return `${diffWeeks}주 전`;
+  }
+
+  return `${diffMonths}개월 전`;
+}
+
+function upsertChat(chat) {
+  chatsById.set(chat.id, chat);
+
+  if (!activeChatId) {
+    activeChatId = chat.id;
+  }
+}
+
+async function loadChat(chatId, { select = false } = {}) {
+  const chat = await fetchChat(chatId);
+  upsertChat(chat);
+
+  if (select) {
+    activeChatId = chat.id;
+  }
+
   render();
 }
 
-function updateDocumentButton() {
-  const canGenerate =
-    isConversationSelected &&
-    latestMessages.length > 0 &&
-    !isDocumentGenerating;
+async function selectChat(chatId) {
+  activeChatId = chatId;
+  render();
 
-  elements.generateDocumentButton.disabled = !canGenerate;
-  elements.generateDocumentButton.textContent = isDocumentGenerating
-    ? '생성 중…'
-    : '📄 공문 생성';
+  try {
+    await loadChat(chatId, { select: true });
+    setConnectionStatus('online');
+  } catch {
+    setConnectionStatus('offline');
+  }
 }
 
 function renderConversationList() {
   elements.conversationList.replaceChildren();
 
-  if (latestMessages.length === 0) {
+  const chats = getChats();
+
+  if (chats.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'sidebar-empty';
 
@@ -119,90 +181,102 @@ function renderConversationList() {
     icon.textContent = '📭';
 
     const text = document.createElement('p');
-    text.innerHTML = '민원인이 채팅을 시작하면<br />현재 상담이 표시됩니다.';
+    text.innerHTML = '민원인이 채팅을 시작하면<br />상담 목록이 표시됩니다.';
 
     empty.append(icon, text);
     elements.conversationList.append(empty);
     return;
   }
 
-  const lastMessage = latestMessages.at(-1);
-  const item = document.createElement('button');
-  item.type = 'button';
-  item.className = `conversation-item${isConversationSelected ? ' active' : ''}`;
-  item.setAttribute('aria-pressed', String(isConversationSelected));
-  item.addEventListener('click', selectCurrentConversation);
+  const fragment = document.createDocumentFragment();
 
-  const header = document.createElement('div');
-  header.className = 'conversation-item-header';
+  chats.forEach((chat) => {
+    const lastMessage = getLastMessage(chat);
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = `conversation-item${chat.id === activeChatId ? ' active' : ''}`;
+    item.setAttribute('aria-pressed', String(chat.id === activeChatId));
+    item.addEventListener('click', () => selectChat(chat.id));
 
-  const title = document.createElement('span');
-  title.className = 'conversation-item-title';
-  title.textContent = '현재 AI 상담';
+    const header = document.createElement('div');
+    header.className = 'conversation-item-header';
 
-  const live = document.createElement('span');
-  live.className = 'live-label';
-  live.textContent = '실시간';
+    const title = document.createElement('span');
+    title.className = 'conversation-item-title';
+    title.textContent = `${chat.countryCode} 상담`;
 
-  const preview = document.createElement('p');
-  preview.className = 'conversation-preview';
-  preview.textContent = lastMessage.text;
+    const status = document.createElement('span');
+    status.className = 'live-label';
+    status.textContent = chat.status;
 
-  const footer = document.createElement('div');
-  footer.className = 'conversation-item-footer';
+    const preview = document.createElement('p');
+    preview.className = 'conversation-preview';
+    preview.textContent = lastMessage?.text ?? '아직 메시지가 없습니다.';
 
-  const sender = document.createElement('span');
-  sender.textContent = lastMessage.role === 'user' ? '민원인 메시지' : 'AI 답변';
+    const footer = document.createElement('div');
+    footer.className = 'conversation-item-footer';
 
-  const count = document.createElement('span');
-  count.textContent = `${latestMessages.length}개 메시지`;
+    const sender = document.createElement('span');
+    sender.textContent = lastMessage
+      ? `${lastMessage.senderLabel} 메시지`
+      : chat.citizenId;
 
-  header.append(title, live);
-  footer.append(sender, count);
-  item.append(header, preview, footer);
-  elements.conversationList.append(item);
+    const time = document.createElement('span');
+    time.className = 'conversation-time';
+    time.textContent = formatRelativeTime(getActivityIso(chat));
+
+    header.append(title, status);
+    footer.append(sender, time);
+    item.append(header, preview, footer);
+    fragment.append(item);
+  });
+
+  elements.conversationList.append(fragment);
 }
 
 function renderMessages() {
   elements.messageList.replaceChildren();
 
-  if (latestMessages.length === 0) {
+  const activeChat = activeChatId ? chatsById.get(activeChatId) : null;
+
+  if (!activeChat) {
     elements.messageList.append(
       createEmptyState(
         '💬',
         '표시할 상담이 없습니다',
-        '모바일 앱에서 메시지를 보내면 이 화면에 최신 대화가 표시됩니다.',
+        '모바일 앱에서 메시지를 보내면 이 화면에 상담이 표시됩니다.',
       ),
     );
     return;
   }
 
-  if (!isConversationSelected) {
+  if (activeChat.messages.length === 0) {
     elements.messageList.append(
-      createEmptyState(
-        '👈',
-        '상담을 선택해 주세요',
-        '왼쪽의 현재 상담을 선택하면 전체 대화가 표시됩니다.',
-      ),
+      createEmptyState('💬', '메시지가 없습니다', '상담 메시지를 기다리고 있습니다.'),
     );
     return;
   }
 
   const fragment = document.createDocumentFragment();
 
-  latestMessages.forEach((message) => {
+  activeChat.messages.forEach((message) => {
     const article = document.createElement('article');
     article.className = `message ${message.role}`;
 
     const sender = document.createElement('div');
     sender.className = 'message-sender';
-    sender.textContent = message.role === 'user' ? '민원인' : 'AI 상담사';
+    sender.textContent = message.senderLabel;
 
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
     bubble.textContent = message.text;
 
-    article.append(sender, bubble);
+    const time = document.createElement('time');
+    time.className = 'message-time';
+    time.dateTime = message.createdAt;
+    time.textContent = formatRelativeTime(message.createdAt);
+
+    article.append(sender, bubble, time);
     fragment.append(article);
   });
 
@@ -211,159 +285,96 @@ function renderMessages() {
 }
 
 function renderHeader() {
-  const hasConversation = latestMessages.length > 0;
+  const chats = getChats();
+  const activeChat = activeChatId ? chatsById.get(activeChatId) : null;
+  const count = chats.length;
 
-  elements.activeConversationCount.textContent = hasConversation ? '1' : '0';
-  elements.conversationCountText.textContent = hasConversation
-    ? '현재 진행 중인 상담 1건'
-    : '현재 진행 중인 상담이 없습니다.';
+  elements.activeConversationCount.textContent = String(count);
+  elements.conversationCountText.textContent =
+    count > 0 ? `누적 상담 ${count}건` : '현재 진행 중인 상담이 없습니다.';
 
-  if (!hasConversation) {
+  if (!activeChat) {
     elements.chatTitle.textContent = '상담을 기다리는 중입니다';
     elements.chatSubtitle.textContent =
       '왼쪽 목록에서 상담을 선택하면 대화가 표시됩니다.';
     elements.messageCountBadge.hidden = true;
-    updateDocumentButton();
     return;
   }
 
-  elements.chatTitle.textContent = isConversationSelected
-    ? '현재 AI 상담'
-    : '상담을 선택해 주세요';
-  elements.chatSubtitle.textContent = isConversationSelected
-    ? '민원인과 AI 상담사의 대화를 읽기 전용으로 표시합니다.'
-    : '왼쪽 목록에서 현재 상담을 선택하세요.';
+  elements.chatTitle.textContent = `${activeChat.countryCode} 상담`;
+  elements.chatSubtitle.textContent = `${formatChatId(activeChat.id)} · ${activeChat.status} · ${formatRelativeTime(
+    getActivityIso(activeChat),
+  )}`;
+  elements.chatSubtitle.title = activeChat.id;
   elements.messageCountBadge.hidden = false;
-  elements.messageCountBadge.textContent = `${latestMessages.length}개 메시지`;
-  updateDocumentButton();
+  elements.messageCountBadge.textContent = `${activeChat.messages.length}개 메시지`;
 }
 
 function render() {
+  disableDocumentGeneration();
   renderHeader();
   renderConversationList();
   renderMessages();
 }
 
-async function pollLatestMessages() {
+function parseEventChatId(eventData) {
   try {
-    const messages = await fetchLatestChatMessages();
-    const nextFingerprint = JSON.stringify(messages);
+    return JSON.parse(eventData)?.chatSessionId ?? null;
+  } catch {
+    return null;
+  }
+}
 
+async function handleRealtimeEvent(event) {
+  if (event.name === 'CONNECTED') {
     setConnectionStatus('online');
+    return;
+  }
 
-    if (nextFingerprint !== latestFingerprint) {
-      if (
-        currentDocumentResult &&
-        nextFingerprint !== documentSourceFingerprint
-      ) {
-        resetDocumentDraft();
-      }
+  const chatId = parseEventChatId(event.data);
 
-      latestMessages = messages;
-      latestFingerprint = nextFingerprint;
+  if (!chatId) {
+    return;
+  }
 
-      if (latestMessages.length === 0) {
-        isConversationSelected = false;
-      }
-
-      render();
-    }
+  try {
+    await loadChat(chatId, { select: !activeChatId });
+    setConnectionStatus('online');
   } catch {
     setConnectionStatus('offline');
-  } finally {
-    window.setTimeout(pollLatestMessages, POLL_INTERVAL_MS);
   }
 }
 
-async function handleGenerateDocument() {
-  if (!isConversationSelected || latestMessages.length === 0) {
-    return;
-  }
-
-  if (
-    currentDocumentResult &&
-    documentSourceFingerprint === latestFingerprint
-  ) {
-    setDocumentPanelOpen(true);
-    return;
-  }
-
-  const sourceFingerprint = latestFingerprint;
-  isDocumentGenerating = true;
-  updateDocumentButton();
-  setDocumentPanelOpen(true);
-  elements.saveDocumentButton.hidden = true;
-  setDocumentStatus('상담 내용을 분석하고 있습니다.');
-  renderDocumentLoading(elements.documentPanelContent);
-
+async function loadInitialChats() {
   try {
-    const result = await createOfficialDocumentDraft(latestMessages);
+    const chats = await fetchChatList();
+    chats.forEach(upsertChat);
 
-    if (sourceFingerprint !== latestFingerprint) {
-      throw new Error(
-        '공문 생성 중 상담 내용이 변경되었습니다. 다시 생성해 주세요.',
-      );
+    if (!activeChatId && chats.length > 0) {
+      activeChatId = getChats()[0].id;
     }
 
-    currentDocumentResult = result;
-    documentSourceFingerprint = sourceFingerprint;
-    renderDocumentDraft(elements.documentPanelContent, result);
-    elements.saveDocumentButton.hidden = false;
-    setDocumentStatus(
-      result.status === 'incomplete'
-        ? '확인되지 않은 항목을 수정한 뒤 저장해 주세요.'
-        : '초안을 바로 수정할 수 있습니다.',
-    );
-  } catch (error) {
-    currentDocumentResult = null;
-    documentSourceFingerprint = '';
-    elements.saveDocumentButton.hidden = true;
-    renderDocumentError(
-      elements.documentPanelContent,
-      error.message || '공문 초안을 생성하지 못했습니다.',
-    );
-    setDocumentStatus('공문 생성에 실패했습니다.', 'error');
-  } finally {
-    isDocumentGenerating = false;
-    updateDocumentButton();
+    setConnectionStatus('online');
+    render();
+  } catch {
+    setConnectionStatus('offline');
+    render();
   }
 }
 
-async function handleSaveDocument() {
-  if (!currentDocumentResult || isDocumentSaving) {
-    return;
-  }
-
-  try {
-    const editedDraft = readDocumentDraft(elements.documentPanelContent);
-    isDocumentSaving = true;
-    elements.saveDocumentButton.disabled = true;
-    elements.saveDocumentButton.textContent = '저장 중…';
-    setDocumentStatus('PDF 파일을 생성하고 있습니다.');
-    await downloadOfficialDocumentPdf(editedDraft);
-    currentDocumentResult = {
-      ...currentDocumentResult,
-      draft: editedDraft,
-    };
-    setDocumentStatus('PDF 파일이 저장되었습니다.', 'success');
-  } catch (error) {
-    setDocumentStatus(
-      error.message || 'PDF 파일을 저장하지 못했습니다.',
-      'error',
-    );
-  } finally {
-    isDocumentSaving = false;
-    elements.saveDocumentButton.disabled = false;
-    elements.saveDocumentButton.textContent = '저장';
-  }
+function connectEventStream() {
+  eventSource?.close();
+  eventSource = openChatEventStream({
+    onOpen: () => setConnectionStatus('online'),
+    onError: () => setConnectionStatus('offline'),
+    onEvent: handleRealtimeEvent,
+  });
 }
 
-elements.generateDocumentButton.addEventListener('click', handleGenerateDocument);
-elements.closeDocumentPanelButton.addEventListener('click', () => {
-  setDocumentPanelOpen(false);
-});
-elements.saveDocumentButton.addEventListener('click', handleSaveDocument);
+elements.closeDocumentPanelButton.addEventListener('click', closeDocumentPanel);
 
-renderDocumentEmpty(elements.documentPanelContent);
+disableDocumentGeneration();
 render();
-pollLatestMessages();
+loadInitialChats();
+connectEventStream();
+window.setInterval(render, 60 * 1000);

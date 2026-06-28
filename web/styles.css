@@ -290,6 +290,10 @@ button {
   font-size: 11px;
 }
 
+.conversation-time {
+  flex: 0 0 auto;
+}
+
 .chat-panel {
   display: flex;
   min-width: 0;
@@ -395,6 +399,11 @@ button {
   margin-left: auto;
 }
 
+.message.staff {
+  align-items: flex-end;
+  margin-left: auto;
+}
+
 .message-sender {
   margin: 0 4px 5px;
   color: var(--slate);
@@ -423,6 +432,18 @@ button {
   border-bottom-right-radius: 4px;
   background: var(--blue);
   color: var(--white);
+}
+
+.message.staff .message-bubble {
+  border-bottom-right-radius: 4px;
+  background: var(--green);
+  color: var(--white);
+}
+
+.message-time {
+  margin: 5px 4px 0;
+  color: #94a3b8;
+  font-size: 10px;
 }
 
 .document-panel {
