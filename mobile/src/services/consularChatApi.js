@@ -7,16 +7,14 @@
  *
  * Mobile UI still uses { role, text }, while backend uses { senderType, content }.
  */
+import { getOrCreateCitizenId } from './deviceIdentityStore';
+
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8080';
-const DEFAULT_CITIZEN_ID = 'citizen-mobile-demo';
 const DEFAULT_COUNTRY_CODE = 'JP';
 
 const API_BASE_URL = trimTrailingSlash(
   process.env.EXPO_PUBLIC_MOFA_API_BASE_URL ?? DEFAULT_API_BASE_URL,
 );
-
-const CITIZEN_ID =
-  process.env.EXPO_PUBLIC_MOFA_CITIZEN_ID ?? DEFAULT_CITIZEN_ID;
 
 const COUNTRY_CODE =
   process.env.EXPO_PUBLIC_MOFA_COUNTRY_CODE ?? DEFAULT_COUNTRY_CODE;
@@ -93,10 +91,11 @@ async function requestJson(path, options = {}) {
 }
 
 export async function createConsularChatSession() {
+  const citizenId = await getOrCreateCitizenId();
   const payload = await requestJson('/api/chats', {
     method: 'POST',
     body: JSON.stringify({
-      citizenId: CITIZEN_ID,
+      citizenId,
       countryCode: COUNTRY_CODE,
     }),
   });

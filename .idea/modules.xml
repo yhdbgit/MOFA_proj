@@ -4,6 +4,7 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/MOFAapp.iml" filepath="$PROJECT_DIR$/.idea/MOFAapp.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/mofa.main.iml" filepath="$PROJECT_DIR$/.idea/modules/mofa.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/mofa.test.iml" filepath="$PROJECT_DIR$/.idea/modules/mofa.test.iml" />
     </modules>
   </component>
 </project>

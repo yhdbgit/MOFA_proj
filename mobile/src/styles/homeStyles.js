@@ -11,6 +11,14 @@ export const HOME_COLORS = {
   textMuted: '#666666',
   placeholder: '#AAAAAA',
   cardBg: '#F0F4F8',
+  dangerBg: '#FFF1F1',
+  dangerBorder: '#FFB8B8',
+  danger: '#E84646',
+  warningBg: '#FFF5D8',
+  warningText: '#7A4A00',
+  registeredBg: '#FFF3BD',
+  registeredIcon: '#B47C00',
+  modalBackdrop: 'rgba(0, 0, 0, 0.36)',
   logoBg: '#F0F0F0',
   inputBorder: '#222222',
 };
@@ -221,25 +229,189 @@ const homeStyles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
 
-  tripSection: {
+  profileSectionWrapper: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 14,
   },
-  tripHeader: {
+  profileWarningBubble: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingLeft: 14,
+    paddingRight: 8,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: HOME_COLORS.warningBg,
+  },
+  profileWarningText: {
+    flex: 1,
+    marginRight: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+    color: HOME_COLORS.warningText,
+  },
+  warningCloseButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileSection: {
+    minHeight: 92,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: HOME_COLORS.white,
+  },
+  profileSectionUnregistered: {
+    borderWidth: 1,
+    borderColor: HOME_COLORS.dangerBorder,
+    backgroundColor: HOME_COLORS.dangerBg,
+  },
+  profileSectionTextBlock: {
+    flex: 1,
+    paddingRight: 14,
+  },
+  profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 6,
   },
-  tripTitle: {
+  profileTitle: {
     marginRight: 4,
     fontSize: 16,
     fontWeight: '700',
     color: HOME_COLORS.black,
   },
-  tripDesc: {
+  profileDesc: {
     fontSize: 13,
     lineHeight: 20,
     color: HOME_COLORS.textMuted,
+  },
+  profileStatusBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileStatusBadgeRegistered: {
+    backgroundColor: HOME_COLORS.registeredBg,
+  },
+  profileStatusBadgeUnregistered: {
+    backgroundColor: HOME_COLORS.danger,
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+    backgroundColor: HOME_COLORS.modalBackdrop,
+  },
+  profileModal: {
+    width: '100%',
+    padding: 20,
+    borderRadius: 18,
+    backgroundColor: HOME_COLORS.white,
+  },
+  modalTitle: {
+    marginBottom: 18,
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: '800',
+    color: HOME_COLORS.black,
+    textAlign: 'center',
+  },
+  formGroup: {
+    marginBottom: 14,
+  },
+  inputLabel: {
+    marginBottom: 7,
+    fontSize: 13,
+    fontWeight: '700',
+    color: HOME_COLORS.textDefault,
+  },
+  modalInput: {
+    minHeight: 46,
+    paddingHorizontal: 13,
+    borderWidth: 1,
+    borderColor: '#D8E0E6',
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    fontSize: 14,
+    color: HOME_COLORS.textDefault,
+  },
+  genderTrack: {
+    height: 46,
+    flexDirection: 'row',
+    position: 'relative',
+    overflow: 'hidden',
+    padding: 3,
+    borderRadius: 23,
+    backgroundColor: '#E9EEF2',
+  },
+  genderThumb: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    bottom: 3,
+    width: '50%',
+    borderRadius: 20,
+    backgroundColor: HOME_COLORS.white,
+    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.16)',
+  },
+  genderOption: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  genderOptionText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#7A858C',
+  },
+  genderOptionTextActive: {
+    color: HOME_COLORS.black,
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  modalButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelButton: {
+    marginRight: 8,
+    backgroundColor: '#EEF2F5',
+  },
+  submitButton: {
+    marginLeft: 8,
+    backgroundColor: HOME_COLORS.primary,
+  },
+  submitButtonDisabled: {
+    opacity: 0.65,
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: HOME_COLORS.textDefault,
+  },
+  submitButtonText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: HOME_COLORS.white,
   },
 
   floatingBtn: {

@@ -4,19 +4,24 @@
  */
 import React, {
   useCallback,
+  useEffect,
+  useRef,
   useMemo,
   useState,
 } from 'react';
 import {
+  Animated,
   View,
   Text,
   ScrollView,
   TextInput,
   TouchableOpacity,
+  Modal,
   StatusBar,
   Alert,
   Keyboard,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import {
   SafeAreaView,
@@ -26,6 +31,10 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import ROUTES from '../constants/routes';
 import styles, { HOME_COLORS } from '../styles/homeStyles';
+import {
+  getCitizenProfile,
+  saveCitizenProfile,
+} from '../services/citizenProfileApi';
 
 const HEADER_ACTIONS = [
   {
@@ -72,6 +81,18 @@ const SUB_FEATURES = [
     emoji: '🌐',
     routeName: null,
   },
+];
+
+const DEFAULT_PROFILE_FORM = {
+  name: '',
+  birthDate: '',
+  phoneNumber: '',
+  gender: 'MALE',
+};
+
+const GENDER_OPTIONS = [
+  { value: 'MALE', label: '남' },
+  { value: 'FEMALE', label: '여' },
 ];
 
 function Header({ onActionPress }) {
@@ -260,29 +281,257 @@ function SafetyCards({ onFeaturePress }) {
   );
 }
 
-function TripRegisterSection({ onPress }) {
-  return (
-    <TouchableOpacity
-      activeOpacity={0.8}
-      accessibilityRole="button"
-      accessibilityLabel="여행일정 등록하기"
-      onPress={onPress}
-      style={styles.tripSection}
-    >
-      <View style={styles.tripHeader}>
-        <Text style={styles.tripTitle}>여행일정 등록하기</Text>
-        <Ionicons
-          name="chevron-forward"
-          size={18}
-          color={HOME_COLORS.textDefault}
-        />
-      </View>
+function GenderSegmentedControl({
+  value,
+  onChange,
+}) {
+  const slideValue = useRef(new Animated.Value(value === 'FEMALE' ? 1 : 0)).current;
+  const [trackWidth, setTrackWidth] = useState(0);
 
-      <Text style={styles.tripDesc}>
-        실시간 해외안전정보와 위급상황 발생 시 가족 또는 지인에게{'\n'}
-        내 위치를 전송할 수 있습니다.
-      </Text>
-    </TouchableOpacity>
+  useEffect(() => {
+    Animated.timing(slideValue, {
+      toValue: value === 'FEMALE' ? 1 : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [slideValue, value]);
+
+  const translateX = slideValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, Math.max(trackWidth / 2 - 3, 0)],
+  });
+
+  return (
+    <View
+      style={styles.genderTrack}
+      onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.genderThumb,
+          {
+            transform: [{ translateX }],
+          },
+        ]}
+      />
+
+      {GENDER_OPTIONS.map((option) => {
+        const isSelected = value === option.value;
+
+        return (
+          <TouchableOpacity
+            key={option.value}
+            activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityState={isSelected ? { selected: true } : {}}
+            accessibilityLabel={`${option.label} 선택`}
+            onPress={() => onChange(option.value)}
+            style={styles.genderOption}
+          >
+            <Text
+              style={[
+                styles.genderOptionText,
+                isSelected && styles.genderOptionTextActive,
+              ]}
+            >
+              {option.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function BasicInfoModal({
+  visible,
+  form,
+  isSaving,
+  onChangeField,
+  onClose,
+  onSubmit,
+}) {
+  return (
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.modalBackdrop}
+      >
+        <View style={styles.profileModal}>
+          <Text style={styles.modalTitle}>기본 정보 등록</Text>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>이름</Text>
+            <TextInput
+              value={form.name}
+              onChangeText={(value) => onChangeField('name', value)}
+              placeholder="이름을 입력하세요"
+              placeholderTextColor={HOME_COLORS.placeholder}
+              autoCapitalize="none"
+              style={styles.modalInput}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>생년월일</Text>
+            <TextInput
+              value={form.birthDate}
+              onChangeText={(value) => onChangeField('birthDate', value)}
+              placeholder="예: 1990-01-01"
+              placeholderTextColor={HOME_COLORS.placeholder}
+              keyboardType="numbers-and-punctuation"
+              style={styles.modalInput}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>전화번호</Text>
+            <TextInput
+              value={form.phoneNumber}
+              onChangeText={(value) => onChangeField('phoneNumber', value)}
+              placeholder="예: 01012345678"
+              placeholderTextColor={HOME_COLORS.placeholder}
+              keyboardType="phone-pad"
+              style={styles.modalInput}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>성별</Text>
+            <GenderSegmentedControl
+              value={form.gender}
+              onChange={(value) => onChangeField('gender', value)}
+            />
+          </View>
+
+          <View style={styles.modalButtonRow}>
+            <TouchableOpacity
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="기본 정보 등록 취소"
+              disabled={isSaving}
+              onPress={onClose}
+              style={[styles.modalButton, styles.cancelButton]}
+            >
+              <Text style={styles.cancelButtonText}>취소</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="기본 정보 등록"
+              disabled={isSaving}
+              onPress={onSubmit}
+              style={[
+                styles.modalButton,
+                styles.submitButton,
+                isSaving && styles.submitButtonDisabled,
+              ]}
+            >
+              <Text style={styles.submitButtonText}>
+                {isSaving ? '등록 중' : '등록'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function BasicInfoSection({
+  isRegistered,
+  showWarning,
+  onDismissWarning,
+  onPress,
+}) {
+  return (
+    <View style={styles.profileSectionWrapper}>
+      {showWarning ? (
+        <View style={styles.profileWarningBubble}>
+          <Text style={styles.profileWarningText}>
+            ⚠️ 사용자의 기본 정보가 등록되지 않았습니다.
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel="기본 정보 미등록 안내 닫기"
+            onPress={onDismissWarning}
+            style={styles.warningCloseButton}
+          >
+            <Ionicons name="close" size={16} color={HOME_COLORS.warningText} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      <TouchableOpacity
+        activeOpacity={0.82}
+        accessibilityRole="button"
+        accessibilityLabel="나의 기본 정보 등록하기"
+        onPress={onPress}
+        style={[
+          styles.profileSection,
+          !isRegistered && styles.profileSectionUnregistered,
+        ]}
+      >
+        <View style={styles.profileSectionTextBlock}>
+          <View style={styles.profileHeader}>
+            <Text style={styles.profileTitle}>나의 기본 정보 등록하기</Text>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={HOME_COLORS.textDefault}
+            />
+          </View>
+
+          <Text style={styles.profileDesc}>
+            신속한 당국 협조를 위해 필요한 최소한의 정보를 등록해 주세요.
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.profileStatusBadge,
+            isRegistered
+              ? styles.profileStatusBadgeRegistered
+              : styles.profileStatusBadgeUnregistered,
+          ]}
+        >
+          <Ionicons
+            name={isRegistered ? 'checkmark' : 'close'}
+            size={18}
+            color={isRegistered ? HOME_COLORS.registeredIcon : HOME_COLORS.white}
+          />
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function normalizeProfileForm(profile) {
+  if (!profile) {
+    return { ...DEFAULT_PROFILE_FORM };
+  }
+
+  return {
+    name: profile.name ?? '',
+    birthDate: profile.birthDate ?? '',
+    phoneNumber: profile.phoneNumber ?? '',
+    gender: profile.gender === 'FEMALE' ? 'FEMALE' : 'MALE',
+  };
+}
+
+function isProfileFormValid(form) {
+  return (
+    form.name.trim().length > 0 &&
+    form.birthDate.trim().length > 0 &&
+    form.phoneNumber.trim().length > 0
   );
 }
 
@@ -312,6 +561,11 @@ function FloatingButton({
 
 export default function HomeScreen({ navigation }) {
   const [chatMessage, setChatMessage] = useState('');
+  const [profile, setProfile] = useState(null);
+  const [profileForm, setProfileForm] = useState(DEFAULT_PROFILE_FORM);
+  const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const [isProfileWarningDismissed, setIsProfileWarningDismissed] = useState(false);
 
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -381,13 +635,86 @@ export default function HomeScreen({ navigation }) {
     [navigateToRoute, showPendingFeatureAlert],
   );
 
-  const handleTripRegisterPress = useCallback(() => {
-    showPendingFeatureAlert('여행일정 등록');
-  }, [showPendingFeatureAlert]);
+  const handleBasicInfoPress = useCallback(() => {
+    setProfileForm(normalizeProfileForm(profile));
+    setIsProfileModalVisible(true);
+  }, [profile]);
+
+  const handleProfileModalClose = useCallback(() => {
+    if (isProfileSaving) {
+      return;
+    }
+
+    setIsProfileModalVisible(false);
+  }, [isProfileSaving]);
+
+  const handleProfileFieldChange = useCallback((field, value) => {
+    setProfileForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  }, []);
+
+  const handleProfileSubmit = useCallback(async () => {
+    if (!isProfileFormValid(profileForm)) {
+      Alert.alert('입력 확인', '이름, 생년월일, 전화번호를 모두 입력해 주세요.');
+      return;
+    }
+
+    setIsProfileSaving(true);
+    try {
+      const savedProfile = await saveCitizenProfile({
+        name: profileForm.name.trim(),
+        birthDate: profileForm.birthDate.trim(),
+        phoneNumber: profileForm.phoneNumber.trim(),
+        gender: profileForm.gender,
+      });
+
+      setProfile(savedProfile);
+      setIsProfileWarningDismissed(false);
+      setIsProfileModalVisible(false);
+    } catch (error) {
+      Alert.alert(
+        '저장 실패',
+        error.message ?? '기본 정보를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+      );
+    } finally {
+      setIsProfileSaving(false);
+    }
+  }, [profileForm]);
 
   const handleFloatingButtonPress = useCallback(() => {
     navigateToRoute(ROUTES.CONSULAR_CALL);
   }, [navigateToRoute]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProfile() {
+      try {
+        const loadedProfile = await getCitizenProfile();
+
+        if (isMounted) {
+          setProfile(loadedProfile);
+          setProfileForm(normalizeProfileForm(loadedProfile));
+        }
+      } catch (error) {
+        if (isMounted) {
+          setProfile(null);
+        }
+      }
+    }
+
+    loadProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const isProfileRegistered = profile !== null;
+  const shouldShowProfileWarning =
+    !isProfileRegistered && !isProfileWarningDismissed;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -411,12 +738,26 @@ export default function HomeScreen({ navigation }) {
 
         <SafetyCards onFeaturePress={handleFeaturePress} />
 
-        <TripRegisterSection onPress={handleTripRegisterPress} />
+        <BasicInfoSection
+          isRegistered={isProfileRegistered}
+          showWarning={shouldShowProfileWarning}
+          onDismissWarning={() => setIsProfileWarningDismissed(true)}
+          onPress={handleBasicInfoPress}
+        />
       </ScrollView>
 
       <FloatingButton
         bottomOffset={floatingBottomOffset}
         onPress={handleFloatingButtonPress}
+      />
+
+      <BasicInfoModal
+        visible={isProfileModalVisible}
+        form={profileForm}
+        isSaving={isProfileSaving}
+        onChangeField={handleProfileFieldChange}
+        onClose={handleProfileModalClose}
+        onSubmit={handleProfileSubmit}
       />
     </SafeAreaView>
   );
