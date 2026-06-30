@@ -324,6 +324,105 @@ button {
   font-size: 11px;
 }
 
+.chat-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.identity-badge,
+.citizen-id-chip,
+.meta-token,
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.identity-badge {
+  max-width: min(560px, 52vw);
+  padding: 0 10px;
+  border: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    max-width 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.identity-badge.verified {
+  background: var(--green-soft);
+  color: var(--green);
+  cursor: pointer;
+}
+
+.identity-badge.verified:hover {
+  background: #d4ecdf;
+}
+
+.identity-badge.unknown {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.identity-badge.expanded {
+  max-width: min(760px, 62vw);
+}
+
+.citizen-id-chip {
+  gap: 6px;
+  padding: 0 4px 0 8px;
+  background: #eef4fb;
+  color: var(--ink-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.citizen-id-text {
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copy-button {
+  justify-content: center;
+  width: 19px;
+  min-height: 19px;
+  border: 0;
+  border-radius: 6px;
+  background: #eef4fb;
+  color: var(--slate);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.copy-button:hover {
+  background: #e2edf8;
+  color: var(--blue);
+}
+
+.copy-button.copied {
+  background: #eef4fb;
+  color: var(--green);
+}
+
+.meta-token {
+  padding: 0 8px;
+  background: #f3f6f9;
+  color: var(--slate);
+}
+
+.meta-token.status {
+  color: var(--green);
+}
+
 .chat-header-actions {
   display: flex;
   align-items: center;

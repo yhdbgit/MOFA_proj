@@ -2,6 +2,7 @@ import { buildBackendUrl } from './config.js';
 
 const CHAT_LIST_URL = buildBackendUrl('/api/chats');
 const EVENT_STREAM_URL = buildBackendUrl('/api/events/stream');
+const CITIZEN_PROFILE_URL = buildBackendUrl('/api/citizen-profile');
 
 async function requestJson(url, fallbackMessage) {
   const response = await fetch(url, {
@@ -91,6 +92,27 @@ export async function fetchChat(chatId) {
   );
 
   return normalizeChat(payload);
+}
+
+export async function fetchCitizenProfile(citizenId) {
+  const response = await fetch(CITIZEN_PROFILE_URL, {
+    cache: 'no-store',
+    headers: {
+      'X-Citizen-Id': citizenId,
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(payload?.message || `기본 정보 조회 실패 (${response.status})`);
+  }
+
+  return payload;
 }
 
 export function openChatEventStream({ onEvent, onOpen, onError }) {

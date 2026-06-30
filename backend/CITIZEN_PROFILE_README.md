@@ -61,9 +61,3 @@ citizen_profiles
 - created_at
 - updated_at
 ```
-
-## MVP Boundaries
-
-- 이 API는 인증 API가 아니다.
-- `citizenId`는 모바일 앱이 `X-Citizen-Id` header로 전달한다.
-- 로그인, JWT, refresh token, 본인인증은 이번 범위에 포함하지 않는다.

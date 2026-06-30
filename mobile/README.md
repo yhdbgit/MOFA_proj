@@ -1,133 +1,189 @@
-# MOFAapp Frontend
-MOFAapp의 모바일 UI를 담당하는 Expo 기반 React Native 앱입니다. 현재 Expo Router가 아닌 React Navigation의 하단 탭 구조를 사용합니다.
+# MOFAapp Mobile
+
+민원인용 Expo React Native 앱입니다. 현재 Expo Router가 아닌 React Navigation 하단 탭 구조를 사용합니다.
 
 ## 기술 스택
+
 - Expo SDK 56
 - React 19
 - React Native 0.85
 - React Navigation 7
-- `react-native-safe-area-context`
+- Expo SecureStore
 - `@expo/vector-icons`
+- `react-native-safe-area-context`
 
 Expo SDK 56의 패키지 호환성과 설정은 [공식 버전 문서](https://docs.expo.dev/versions/v56.0.0/)를 기준으로 확인합니다.
 
-## 프론트엔드 범위
-화면과 사용자 입력 상태를 관리하고, AI 상담 요청을 백엔드의 `POST /chat` API로 전달합니다. Gemini API 키, 검색 데이터베이스, 답변 생성 로직은 프론트에에 포함하지 않습니다.
+## 역할
 
-```text
-HomeScreen.jsx
-  -> initialMessage 화면 파라미터
-ChatScreen.jsx
-  -> messages 배열 구성
-src/services/consularChatApi.js
-  -> POST /chat
-Backend
-  -> { reply }
-ChatScreen.jsx
-  -> reply를 상담 메시지로 표시
-```
+Mobile은 사용자 화면과 입력 상태를 담당합니다. Gemini API 키, 검색 데이터베이스, agent 실행 로직은 포함하지 않습니다.
+
+현재 mobile이 담당하는 주요 기능:
+
+- 홈 화면과 하단 탭 네비게이션
+- AI 상담 채팅 UI
+- Spring Boot main API에 상담방 생성 및 메시지 전송
+- 앱 설치 단위 `citizenId` 발급 및 SecureStore 저장
+- 이름, 생년월일, 전화번호, 성별 기본정보 등록
+- 등록된 기본정보 여부를 홈 화면에서 표시
 
 ## 폴더 구조
-```text
-frontend/
-├── App.js                         앱 루트와 하단 탭 네비게이션
-├── index.js                       Expo 앱 진입점
-├── app.json                       앱 이름, 아이콘, 플랫폼 설정
-├── .env.example                   채팅 API 주소 예시
+
+```txt
+mobile/
+├── App.js
+├── index.js
+├── app.json
+├── .env.example
 └── src/
-    ├── constants/routes.js        화면 이름 상수
-    ├── screens/HomeScreen.jsx     홈 화면과 기능 진입점
-    ├── screens/ChatScreen.jsx     AI 상담 UI와 메시지 상태
-    ├── services/consularChatApi.js 채팅 API 통신
-    └── styles/                    화면별 React Native 스타일
+    ├── constants/routes.js
+    ├── screens/
+    │   ├── HomeScreen.jsx
+    │   └── ChatScreen.jsx
+    ├── services/
+    │   ├── consularChatApi.js
+    │   ├── citizenProfileApi.js
+    │   └── deviceIdentityStore.js
+    └── styles/
+        ├── appStyles.js
+        ├── chatStyles.js
+        └── homeStyles.js
 ```
 
-## 현재 구현 상태
-| 기능 | 상태 | 관련 파일 |
-| --- | --- | --- |
-| 홈 화면 | 구현됨 | `src/screens/HomeScreen.jsx` |
-| 하단 탭 이동 | 구현됨 | `App.js` |
-| AI 상담 채팅 | 구현됨 | `src/screens/ChatScreen.jsx` |
-| `POST /chat` 연동 | 구현됨 | `src/services/consularChatApi.js` |
-| 영사안전콜센터 | 임시 화면 | `App.js` |
-| 재외공관 연락처 | 임시 화면 | `App.js` |
-| 내 위치 안전정보 | 임시 화면 | `App.js` |
+## Backend 연동 구조
 
+기존 목업 백엔드 연동은 `POST /chat`에 화면의 `messages` 배열을 보내고 `{ reply }`를 받는 방식이었습니다. 현재 mobile은 팀원 backend와 결합되면서 Spring Boot main API 기준으로 동작합니다.
 
-## 실행 방법
-의존성을 설치합니다.
-
-```bash
-npm install
+```txt
+ChatScreen.jsx
+  -> consularChatApi.js
+  -> POST /api/chats
+  -> POST /api/chats/{chatId}/messages
+  -> agentResult.citizenReply 표시
 ```
 
-필요하면 환경변수 파일을 만듭니다. 환경변수를 만들지 않으면 기본 주소인 `http://127.0.0.1:8787/chat`을 사용합니다.
+첫 메시지를 보내기 전 API layer가 채팅방을 생성하고, 이후 같은 `chatId`로 메시지를 보냅니다. 화면의 `messages` 배열은 UI 렌더링용 상태이고, 실제 대화 이력은 Spring Boot backend가 DB에서 관리합니다.
 
-```bash
-cp .env.example .env
-```
+## 환경변수
+
+`.env.example`:
 
 ```env
-EXPO_PUBLIC_CONSULAR_CHAT_API_URL=http://127.0.0.1:8787/chat
+EXPO_PUBLIC_MOFA_API_BASE_URL=http://127.0.0.1:8080
+EXPO_PUBLIC_MOFA_COUNTRY_CODE=JP
 ```
 
-앱을 실행합니다.
+Android Emulator에서 host Mac의 Spring Boot에 붙을 때는 `.env`를 다음처럼 둡니다.
 
-```bash
-npm start
-npm run ios
-npm run android
+```env
+EXPO_PUBLIC_MOFA_API_BASE_URL=http://10.0.2.2:8080
+EXPO_PUBLIC_MOFA_COUNTRY_CODE=JP
 ```
+
+`EXPO_PUBLIC_` 값은 앱 번들에 포함될 수 있으므로 비밀값을 넣지 않습니다.
 
 ## Chat API 계약
-### 요청
+
+### 상담방 생성
 
 ```http
-POST /chat
+POST /api/chats
 Content-Type: application/json
 ```
 
-```json
-{
-  "messages": [
-    {
-      "id": "welcome",
-      "role": "assistant",
-      "text": "안녕하세요. AI 영사콜센터 상담사입니다."
-    },
-    {
-      "id": "user-...",
-      "role": "user",
-      "text": "여권을 잃어버렸어요"
-    }
-  ]
-}
-```
-
-- `role`: `user` 또는 `assistant`
-- `text`: 비어 있지 않은 메시지 본문
-- `id`: 화면의 목록 렌더링을 위한 프론트엔드 식별자입니다.
-
-### 성공 응답
+요청 Body:
 
 ```json
 {
-  "reply": "가까운 경찰서에서 분실 신고를 먼저 진행해 주세요."
+  "citizenId": "citizen-...",
+  "countryCode": "JP"
 }
 ```
 
-- `reply`: 프론트엔드가 필수로 사용하는 비어 있지 않은 문자열입니다.
-
-백엔드 구현 언어나 내부 구조가 바뀌어도 위 요청과 `reply` 응답 형식이 유지되면 프론트엔드는 API 주소만 변경하여 연결할 수 있습니다.
-
-### 실패 응답과 제한 시간
-프론트엔드는 다음 오류 형식을 사용자 메시지로 변환합니다.
+응답:
 
 ```json
-{ "detail": "오류 내용" }
+{
+  "id": "...",
+  "citizenId": "citizen-...",
+  "countryCode": "JP",
+  "status": "OPEN",
+  "createdAt": "...",
+  "messages": []
+}
 ```
+
+### 메시지 전송
+
+```http
+POST /api/chats/{chatId}/messages
+Content-Type: application/json
+```
+
+요청 Body:
 
 ```json
-{ "error": "오류 내용" }
+{
+  "senderType": "CITIZEN",
+  "content": "도와주세요"
+}
 ```
 
+응답:
+
+```json
+{
+  "message": {
+    "id": "...",
+    "senderType": "CITIZEN",
+    "content": "도와주세요",
+    "createdAt": "..."
+  },
+  "agentResult": {
+    "status": "COMPLETED",
+    "citizenReply": "...",
+    "severity": "...",
+    "recommendedActions": [],
+    "officialDocumentDraft": null,
+    "ragSources": []
+  }
+}
+```
+
+현재 mobile UI는 `agentResult.citizenReply`만 채팅 말풍선으로 표시합니다. `severity`, `recommendedActions`, `officialDocumentDraft`, `ragSources`는 추후 기능 후보입니다.
+
+## 기본정보 API 계약
+
+상세 흐름은 `BASIC_INFO_REGISTRATION_README.md`에 별도로 유지합니다.
+
+```http
+GET /api/citizen-profile
+X-Citizen-Id: <citizenId>
+```
+
+```http
+PUT /api/citizen-profile
+X-Citizen-Id: <citizenId>
+Content-Type: application/json
+```
+
+요청 Body:
+
+```json
+{
+  "name": "홍길동",
+  "birthDate": "1990-01-01",
+  "phoneNumber": "01012345678",
+  "gender": "MALE"
+}
+```
+
+## 보류 중인 화면/기능
+
+- 홈 화면의 일부 카드형 기능은 아직 준비 중 알림만 표시합니다.
+- 모바일 화면에서는 `severity`, `recommendedActions`, `ragSources`를 아직 표시하지 않습니다.
+- 공문 작성 UI는 현재 mobile 범위에 포함하지 않습니다.
+
+## 실행
+
+전체 앱 실행 순서는 루트 `README.md`의 실행 방법을 따릅니다.

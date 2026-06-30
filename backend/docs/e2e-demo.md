@@ -1,93 +1,20 @@
 # E2E Demo
 
-This document describes the temporary verification flow for the current prototype.
+현재 E2E 실행 절차는 루트 `README.md`의 실행 방법을 기준으로 합니다.
 
-## Services
+이 문서는 예전에 `backend/apps/citizen-app`, `backend/apps/console-web` 검증용 목업 프론트를 사용하던 절차를 대체합니다. 해당 `backend/apps` 폴더는 현재 실제 mobile/web과 별개라 삭제되었습니다.
 
-Start infrastructure from the project root:
+## 현재 확인 흐름
 
-```bash
-docker compose -f infra/docker/compose.yaml up -d postgres redis
-```
+1. 루트 `README.md` 순서대로 PostgreSQL, Redis, FastAPI AI Agent, Spring Boot main API, web, mobile을 실행합니다.
+2. mobile에서 기본정보를 등록합니다.
+3. DBeaver에서 `citizen_profiles` row가 저장됐는지 확인합니다.
+4. mobile에서 상담 메시지를 보냅니다.
+5. DBeaver에서 `chat_sessions`, `chat_messages` row가 저장됐는지 확인합니다.
+6. web에서 상담 목록과 상세 메시지가 갱신되는지 확인합니다.
+7. web 상담 상세 상단에서 `신원 확인` 또는 `신원 미상`이 표시되는지 확인합니다.
 
-Start FastAPI from `services/ai-agent-server`:
-
-```bash
-source .venv/bin/activate
-uvicorn app.main:app --reload --port 8000
-```
-
-Start Spring Boot from IntelliJ:
-
-```txt
-Run MofaApplication
-```
-
-Start the staff console from `apps/console-web`:
-
-```bash
-npm install
-npm run dev
-```
-
-Open:
-
-```txt
-http://localhost:5173
-```
-
-Start the citizen app from `apps/citizen-app`:
-
-```bash
-npm install
-npm run web
-```
-
-or:
-
-```bash
-npm run ios
-```
-
-## Verification Flow
-
-1. Open the staff console web page.
-2. Open the citizen app.
-3. In the citizen app, press `Create Chat`.
-4. Confirm the staff console receives `CHAT_CREATED`.
-5. In the citizen app, press `Send Message`.
-6. Confirm the Spring Boot API calls FastAPI and returns a mock agent result.
-7. Confirm the staff console receives `CHAT_MESSAGE_CREATED`.
-8. If FastAPI is running and the message is from `CITIZEN`, confirm an `AGENT` message appears in the chat detail.
-
-## PostgreSQL Check
-
-### IntelliJ Database
-
-1. Open the Database tool window.
-2. Add PostgreSQL data source.
-3. Use:
-
-```txt
-Host: localhost
-Port: 5432
-Database: mofa
-User: mofa
-Password: mofa-local-password
-```
-
-4. Open `mofa > public > tables`.
-5. Check:
-
-```txt
-chat_sessions
-chat_messages
-```
-
-### DBeaver
-
-1. Create a new PostgreSQL connection.
-2. Use the same connection settings:
+## DB 확인
 
 ```txt
 Host: localhost
@@ -97,18 +24,23 @@ Username: mofa
 Password: mofa-local-password
 ```
 
-3. Open `mofa > Schemas > public > Tables`.
-4. View `chat_sessions` and `chat_messages`.
+주요 테이블:
 
-## Redis Check
+```txt
+citizen_profiles
+chat_sessions
+chat_messages
+```
 
-Subscribe to backend events:
+## Redis 확인
+
+이벤트 확인이 필요하면 다음 명령으로 Redis channel을 구독합니다.
 
 ```bash
 docker exec mofa-redis redis-cli SUBSCRIBE mofa.events
 ```
 
-Expected event types:
+예상 이벤트:
 
 ```txt
 CHAT_CREATED
@@ -116,9 +48,8 @@ CHAT_MESSAGE_CREATED
 AGENT_RESULT_READY
 ```
 
-The staff console receives these events through:
+web은 다음 SSE endpoint를 통해 이벤트를 받습니다.
 
 ```txt
 GET http://localhost:8080/api/events/stream
 ```
-

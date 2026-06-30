@@ -1,6 +1,7 @@
 import {
   fetchChat,
   fetchChatList,
+  fetchCitizenProfile,
   openChatEventStream,
 } from './chatMonitorApi.js';
 
@@ -25,7 +26,12 @@ const elements = {
 };
 
 const chatsById = new Map();
+const profilesByCitizenId = new Map();
+const profileRequestsByCitizenId = new Map();
 let activeChatId = null;
+let copiedCitizenId = null;
+let copyResetTimeoutId = null;
+let expandedIdentityCitizenId = null;
 let eventSource = null;
 
 function createEmptyState(icon, title, description) {
@@ -91,12 +97,61 @@ function getActivityTime(chat) {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
-function formatChatId(chatId) {
-  if (typeof chatId !== 'string' || chatId.length <= 8) {
-    return chatId;
+function formatCitizenId(citizenId) {
+  if (typeof citizenId !== 'string' || citizenId.length <= 8) {
+    return citizenId || 'ID 없음';
   }
 
-  return `채팅방 ${chatId.slice(0, 8)}`;
+  return `${citizenId.slice(0, 8)}...`;
+}
+
+function formatGender(gender) {
+  if (gender === 'MALE') {
+    return '남';
+  }
+
+  if (gender === 'FEMALE') {
+    return '여';
+  }
+
+  return '';
+}
+
+function calculateAge(birthDate) {
+  if (typeof birthDate !== 'string' || birthDate.trim().length === 0) {
+    return null;
+  }
+
+  const birth = new Date(birthDate);
+
+  if (Number.isNaN(birth.getTime())) {
+    return null;
+  }
+
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const didBirthdayPass =
+    today.getMonth() > birth.getMonth() ||
+    (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
+
+  if (!didBirthdayPass) {
+    age -= 1;
+  }
+
+  return age >= 0 ? age : null;
+}
+
+function formatProfileSummary(profile) {
+  const age = calculateAge(profile?.birthDate);
+  const parts = [
+    profile?.name,
+    age === null ? '' : `${age}세`,
+    formatGender(profile?.gender),
+    profile?.birthDate,
+    profile?.phoneNumber,
+  ].filter((value) => typeof value === 'string' && value.trim().length > 0);
+
+  return parts.join('/');
 }
 
 function formatRelativeTime(isoValue) {
@@ -144,6 +199,31 @@ function upsertChat(chat) {
   }
 }
 
+async function ensureCitizenProfile(citizenId) {
+  if (!citizenId) {
+    return null;
+  }
+
+  if (profilesByCitizenId.has(citizenId) && profilesByCitizenId.get(citizenId)) {
+    return profilesByCitizenId.get(citizenId);
+  }
+
+  if (profileRequestsByCitizenId.has(citizenId)) {
+    return profileRequestsByCitizenId.get(citizenId);
+  }
+
+  const request = fetchCitizenProfile(citizenId)
+    .catch(() => null)
+    .then((profile) => {
+      profilesByCitizenId.set(citizenId, profile);
+      profileRequestsByCitizenId.delete(citizenId);
+      return profile;
+    });
+
+  profileRequestsByCitizenId.set(citizenId, request);
+  return request;
+}
+
 async function loadChat(chatId, { select = false } = {}) {
   const chat = await fetchChat(chatId);
   upsertChat(chat);
@@ -152,6 +232,7 @@ async function loadChat(chatId, { select = false } = {}) {
     activeChatId = chat.id;
   }
 
+  await ensureCitizenProfile(chat.citizenId);
   render();
 }
 
@@ -284,6 +365,104 @@ function renderMessages() {
   elements.messageList.scrollTop = elements.messageList.scrollHeight;
 }
 
+function createIdentityBadge(chat, profile) {
+  const isVerified = Boolean(profile);
+  const isExpanded = isVerified && expandedIdentityCitizenId === chat.citizenId;
+  const element = document.createElement(isVerified ? 'button' : 'span');
+  element.className = `identity-badge ${isVerified ? 'verified' : 'unknown'}${
+    isExpanded ? ' expanded' : ''
+  }`;
+
+  if (!isVerified) {
+    element.textContent = '신원 미상';
+    return element;
+  }
+
+  element.type = 'button';
+  element.setAttribute('aria-expanded', String(isExpanded));
+  element.textContent = isExpanded
+    ? `신원 확인 | ${formatProfileSummary(profile)}`
+    : '신원 확인';
+  element.addEventListener('click', () => {
+    expandedIdentityCitizenId = isExpanded ? null : chat.citizenId;
+    renderHeader();
+  });
+
+  return element;
+}
+
+function copyTextFallback(value) {
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  textarea.remove();
+}
+
+async function copyCitizenId(citizenId) {
+  if (!citizenId) {
+    return;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(citizenId);
+    } else {
+      copyTextFallback(citizenId);
+    }
+  } catch {
+    copyTextFallback(citizenId);
+  }
+
+  copiedCitizenId = citizenId;
+  window.clearTimeout(copyResetTimeoutId);
+  copyResetTimeoutId = window.setTimeout(() => {
+    copiedCitizenId = null;
+    renderHeader();
+  }, 1000);
+  renderHeader();
+}
+
+function renderChatMeta(activeChat) {
+  const fragment = document.createDocumentFragment();
+  const profile = profilesByCitizenId.get(activeChat.citizenId) ?? null;
+  const identityBadge = createIdentityBadge(activeChat, profile);
+
+  const citizenIdChip = document.createElement('span');
+  citizenIdChip.className = 'citizen-id-chip';
+  citizenIdChip.title = activeChat.citizenId;
+
+  const citizenIdText = document.createElement('span');
+  citizenIdText.className = 'citizen-id-text';
+  citizenIdText.textContent = formatCitizenId(activeChat.citizenId);
+
+  const copyButton = document.createElement('button');
+  const isCopied = copiedCitizenId === activeChat.citizenId;
+  copyButton.type = 'button';
+  copyButton.className = `copy-button${isCopied ? ' copied' : ''}`;
+  copyButton.setAttribute('aria-label', 'citizenId 복사');
+  copyButton.title = 'citizenId 복사';
+  copyButton.textContent = isCopied ? '✓' : '⧉';
+  copyButton.addEventListener('click', () => copyCitizenId(activeChat.citizenId));
+  citizenIdChip.append(citizenIdText, copyButton);
+
+  const country = document.createElement('span');
+  country.className = 'meta-token country';
+  country.textContent = activeChat.countryCode;
+
+  const status = document.createElement('span');
+  status.className = 'meta-token status';
+  status.textContent = activeChat.status;
+
+  fragment.append(identityBadge, citizenIdChip);
+  fragment.append(country, status);
+  return fragment;
+}
+
 function renderHeader() {
   const chats = getChats();
   const activeChat = activeChatId ? chatsById.get(activeChatId) : null;
@@ -295,17 +474,18 @@ function renderHeader() {
 
   if (!activeChat) {
     elements.chatTitle.textContent = '상담을 기다리는 중입니다';
+    elements.chatSubtitle.className = '';
     elements.chatSubtitle.textContent =
       '왼쪽 목록에서 상담을 선택하면 대화가 표시됩니다.';
+    elements.chatSubtitle.title = '';
     elements.messageCountBadge.hidden = true;
     return;
   }
 
   elements.chatTitle.textContent = `${activeChat.countryCode} 상담`;
-  elements.chatSubtitle.textContent = `${formatChatId(activeChat.id)} · ${activeChat.status} · ${formatRelativeTime(
-    getActivityIso(activeChat),
-  )}`;
-  elements.chatSubtitle.title = activeChat.id;
+  elements.chatSubtitle.className = 'chat-meta-row';
+  elements.chatSubtitle.title = activeChat.citizenId;
+  elements.chatSubtitle.replaceChildren(renderChatMeta(activeChat));
   elements.messageCountBadge.hidden = false;
   elements.messageCountBadge.textContent = `${activeChat.messages.length}개 메시지`;
 }
@@ -352,6 +532,12 @@ async function loadInitialChats() {
 
     if (!activeChatId && chats.length > 0) {
       activeChatId = getChats()[0].id;
+    }
+
+    const activeChat = activeChatId ? chatsById.get(activeChatId) : null;
+
+    if (activeChat) {
+      await ensureCitizenProfile(activeChat.citizenId);
     }
 
     setConnectionStatus('online');

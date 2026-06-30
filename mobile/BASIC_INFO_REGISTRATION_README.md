@@ -51,10 +51,3 @@
 ```
 
 `gender` 값은 `MALE` 또는 `FEMALE`이다. UI 초기값은 `MALE`이다.
-
-## MVP Boundaries
-
-- 로그인, JWT, refresh token, 생체 인증은 추가하지 않는다.
-- 개인정보 원문은 SecureStore에 저장하지 않는다.
-- SecureStore에는 `citizenId`만 저장한다.
-- 기본정보 등록 화면은 별도 페이지가 아니라 홈 화면 modal이다.
