@@ -3,7 +3,7 @@
 재외국민 긴급 상담 MVP입니다. 현재 구조는 민원인용 Expo 모바일 앱, 공무원용 관리자 웹, Spring Boot 메인 API, FastAPI AI agent, PostgreSQL, Redis로 구성됩니다.
 
 ## 현재 구성
-
+cd
 | 영역 | 위치 | 역할 |
 | --- | --- | --- |
 | Mobile | `mobile/` | 민원인용 Expo 앱. AI 상담, 기본정보 등록, SecureStore 기반 `citizenId` 발급 |

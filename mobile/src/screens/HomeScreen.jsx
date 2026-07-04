@@ -95,6 +95,35 @@ const GENDER_OPTIONS = [
   { value: 'FEMALE', label: '여' },
 ];
 
+const REQUIRED_PRIVACY_CONSENTS = [
+  {
+    id: 'collectionUse',
+    title: '개인정보 수집·이용 동의',
+    description:
+      '이름, 전화번호, 생년월일, 성별을 해외 위험상황 대응, 신원 확인, 공문 작성, 사용자 연락을 위해 수집·이용합니다.',
+  },
+  {
+    id: 'thirdPartyTransfer',
+    title: '긴급상황 대응을 위한 개인정보 제3자 제공 및 국외이전 동의',
+    description:
+      '위험상황 발생 시 사용자의 이름, 전화번호, 생년월일, 성별을 외교부, 재외공관, 현지 경찰·소방·의료기관·구조기관, 지정 긴급연락처에 제공할 수 있습니다.',
+  },
+  {
+    id: 'privacyPolicy',
+    title: '개인정보처리방침 확인',
+    description:
+      '개인정보 처리 목적, 보유 기간, 파기 절차, 위탁 업체, 국외이전 사항 등을 확인했습니다.',
+  },
+];
+
+const INITIAL_PRIVACY_CONSENT_STATE = REQUIRED_PRIVACY_CONSENTS.reduce(
+  (state, consent) => ({
+    ...state,
+    [consent.id]: false,
+  }),
+  {},
+);
+
 function Header({ onActionPress }) {
   return (
     <View style={styles.header}>
@@ -352,6 +381,72 @@ function BasicInfoModal({
   onClose,
   onSubmit,
 }) {
+  const [privacyConsents, setPrivacyConsents] = useState(
+    INITIAL_PRIVACY_CONSENT_STATE,
+  );
+  const [expandedConsentIds, setExpandedConsentIds] = useState({});
+  const [showConsentError, setShowConsentError] = useState(false);
+
+  const isAllPrivacyConsented = REQUIRED_PRIVACY_CONSENTS.every(
+    (consent) => privacyConsents[consent.id],
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
+    setPrivacyConsents(INITIAL_PRIVACY_CONSENT_STATE);
+    setExpandedConsentIds({});
+    setShowConsentError(false);
+  }, [visible]);
+
+  useEffect(() => {
+    if (isAllPrivacyConsented) {
+      setShowConsentError(false);
+    }
+  }, [isAllPrivacyConsented]);
+
+  const toggleAllPrivacyConsents = useCallback(() => {
+    const nextValue = !isAllPrivacyConsented;
+
+    setPrivacyConsents(
+      REQUIRED_PRIVACY_CONSENTS.reduce(
+        (state, consent) => ({
+          ...state,
+          [consent.id]: nextValue,
+        }),
+        {},
+      ),
+    );
+    setShowConsentError(false);
+  }, [isAllPrivacyConsented]);
+
+  const togglePrivacyConsent = useCallback((consentId) => {
+    setPrivacyConsents((currentConsents) => {
+      return {
+        ...currentConsents,
+        [consentId]: !currentConsents[consentId],
+      };
+    });
+  }, []);
+
+  const toggleConsentDetails = useCallback((consentId) => {
+    setExpandedConsentIds((currentIds) => ({
+      ...currentIds,
+      [consentId]: !currentIds[consentId],
+    }));
+  }, []);
+
+  const handleSubmitPress = useCallback(() => {
+    if (!isAllPrivacyConsented) {
+      setShowConsentError(true);
+      return;
+    }
+
+    onSubmit();
+  }, [isAllPrivacyConsented, onSubmit]);
+
   return (
     <Modal
       visible={visible}
@@ -364,51 +459,157 @@ function BasicInfoModal({
         style={styles.modalBackdrop}
       >
         <View style={styles.profileModal}>
-          <Text style={styles.modalTitle}>기본 정보 등록</Text>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            style={styles.profileModalScroll}
+            contentContainerStyle={styles.profileModalContent}
+          >
+            <Text style={styles.modalTitle}>기본 정보 등록</Text>
 
-          <View style={styles.formGroup}>
-            <Text style={styles.inputLabel}>이름</Text>
-            <TextInput
-              value={form.name}
-              onChangeText={(value) => onChangeField('name', value)}
-              placeholder="이름을 입력하세요"
-              placeholderTextColor={HOME_COLORS.placeholder}
-              autoCapitalize="none"
-              style={styles.modalInput}
-            />
-          </View>
+            <View style={styles.formGroup}>
+              <Text style={styles.inputLabel}>이름</Text>
+              <TextInput
+                value={form.name}
+                onChangeText={(value) => onChangeField('name', value)}
+                placeholder="이름을 입력하세요"
+                placeholderTextColor={HOME_COLORS.placeholder}
+                autoCapitalize="none"
+                style={styles.modalInput}
+              />
+            </View>
 
-          <View style={styles.formGroup}>
-            <Text style={styles.inputLabel}>생년월일</Text>
-            <TextInput
-              value={form.birthDate}
-              onChangeText={(value) => onChangeField('birthDate', value)}
-              placeholder="예: 1990-01-01"
-              placeholderTextColor={HOME_COLORS.placeholder}
-              keyboardType="numbers-and-punctuation"
-              style={styles.modalInput}
-            />
-          </View>
+            <View style={styles.formGroup}>
+              <Text style={styles.inputLabel}>생년월일</Text>
+              <TextInput
+                value={form.birthDate}
+                onChangeText={(value) => onChangeField('birthDate', value)}
+                placeholder="예: 1990-01-01"
+                placeholderTextColor={HOME_COLORS.placeholder}
+                keyboardType="numbers-and-punctuation"
+                style={styles.modalInput}
+              />
+            </View>
 
-          <View style={styles.formGroup}>
-            <Text style={styles.inputLabel}>전화번호</Text>
-            <TextInput
-              value={form.phoneNumber}
-              onChangeText={(value) => onChangeField('phoneNumber', value)}
-              placeholder="예: 01012345678"
-              placeholderTextColor={HOME_COLORS.placeholder}
-              keyboardType="phone-pad"
-              style={styles.modalInput}
-            />
-          </View>
+            <View style={styles.formGroup}>
+              <Text style={styles.inputLabel}>전화번호</Text>
+              <TextInput
+                value={form.phoneNumber}
+                onChangeText={(value) => onChangeField('phoneNumber', value)}
+                placeholder="예: 01012345678"
+                placeholderTextColor={HOME_COLORS.placeholder}
+                keyboardType="phone-pad"
+                style={styles.modalInput}
+              />
+            </View>
 
-          <View style={styles.formGroup}>
-            <Text style={styles.inputLabel}>성별</Text>
-            <GenderSegmentedControl
-              value={form.gender}
-              onChange={(value) => onChangeField('gender', value)}
-            />
-          </View>
+            <View style={styles.formGroup}>
+              <Text style={styles.inputLabel}>성별</Text>
+              <GenderSegmentedControl
+                value={form.gender}
+                onChange={(value) => onChangeField('gender', value)}
+              />
+            </View>
+
+            <View style={styles.privacyConsentSection}>
+              <View style={styles.privacyConsentAllRow}>
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: isAllPrivacyConsented }}
+                  accessibilityLabel="개인정보 필수 항목 전체동의"
+                  onPress={toggleAllPrivacyConsents}
+                  style={styles.privacyConsentAllButton}
+                >
+                  <Ionicons
+                    name={isAllPrivacyConsented ? 'checkbox' : 'square-outline'}
+                    size={22}
+                    color={
+                      isAllPrivacyConsented
+                        ? HOME_COLORS.primary
+                        : HOME_COLORS.textMuted
+                    }
+                  />
+                  <Text style={styles.privacyConsentAllText}>전체동의</Text>
+                </TouchableOpacity>
+
+                {showConsentError ? (
+                  <Text style={styles.privacyConsentError}>
+                    필수 항목을 동의해주세요
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.privacyConsentDivider} />
+
+              {REQUIRED_PRIVACY_CONSENTS.map((consent) => {
+                const isChecked = privacyConsents[consent.id];
+                const isExpanded = expandedConsentIds[consent.id];
+
+                return (
+                  <View key={consent.id} style={styles.privacyConsentItem}>
+                    <View style={styles.privacyConsentRow}>
+                      <TouchableOpacity
+                        activeOpacity={0.75}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: isChecked }}
+                        accessibilityLabel={`${consent.title} 필수 동의`}
+                        onPress={() => togglePrivacyConsent(consent.id)}
+                        style={styles.privacyConsentCheckButton}
+                      >
+                        <Ionicons
+                          name={isChecked ? 'checkbox' : 'square-outline'}
+                          size={21}
+                          color={
+                            isChecked
+                              ? HOME_COLORS.primary
+                              : HOME_COLORS.textMuted
+                          }
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        activeOpacity={0.75}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${consent.title} 내용 ${
+                          isExpanded ? '접기' : '보기'
+                        }`}
+                        onPress={() => toggleConsentDetails(consent.id)}
+                        style={styles.privacyConsentTextButton}
+                      >
+                        <Text style={styles.privacyConsentTitle}>
+                          {consent.title}
+                        </Text>
+                        <Text style={styles.privacyConsentRequired}>필수</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        activeOpacity={0.75}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${consent.title} 내용 ${
+                          isExpanded ? '접기' : '보기'
+                        }`}
+                        onPress={() => toggleConsentDetails(consent.id)}
+                        style={styles.privacyConsentChevronButton}
+                      >
+                        <Ionicons
+                          name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                          size={19}
+                          color={HOME_COLORS.textMuted}
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    {isExpanded ? (
+                      <Text style={styles.privacyConsentDescription}>
+                        {consent.description}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
 
           <View style={styles.modalButtonRow}>
             <TouchableOpacity
@@ -427,7 +628,7 @@ function BasicInfoModal({
               accessibilityRole="button"
               accessibilityLabel="기본 정보 등록"
               disabled={isSaving}
-              onPress={onSubmit}
+              onPress={handleSubmitPress}
               style={[
                 styles.modalButton,
                 styles.submitButton,

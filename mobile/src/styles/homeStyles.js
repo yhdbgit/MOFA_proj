@@ -317,9 +317,16 @@ const homeStyles = StyleSheet.create({
   },
   profileModal: {
     width: '100%',
+    maxHeight: '88%',
     padding: 20,
     borderRadius: 18,
     backgroundColor: HOME_COLORS.white,
+  },
+  profileModalScroll: {
+    flexShrink: 1,
+  },
+  profileModalContent: {
+    paddingBottom: 10,
   },
   modalTitle: {
     marginBottom: 18,
@@ -380,6 +387,95 @@ const homeStyles = StyleSheet.create({
   },
   genderOptionTextActive: {
     color: HOME_COLORS.black,
+  },
+  privacyConsentSection: {
+    marginTop: 2,
+    marginBottom: 12,
+  },
+  privacyConsentAllRow: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  privacyConsentAllButton: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  privacyConsentAllText: {
+    marginLeft: 7,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '800',
+    color: HOME_COLORS.textDefault,
+  },
+  privacyConsentError: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '700',
+    color: HOME_COLORS.danger,
+    textAlign: 'right',
+  },
+  privacyConsentDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: 7,
+    marginBottom: 7,
+    backgroundColor: '#DDE5EA',
+  },
+  privacyConsentItem: {
+    paddingVertical: 3,
+  },
+  privacyConsentRow: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  privacyConsentCheckButton: {
+    width: 28,
+    minHeight: 34,
+    paddingTop: 2,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+  },
+  privacyConsentTextButton: {
+    minHeight: 34,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingTop: 4,
+    paddingRight: 6,
+  },
+  privacyConsentTitle: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: HOME_COLORS.textDefault,
+  },
+  privacyConsentRequired: {
+    marginLeft: 5,
+    fontSize: 11,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: '#A7B0B7',
+  },
+  privacyConsentChevronButton: {
+    width: 32,
+    minHeight: 34,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 3,
+  },
+  privacyConsentDescription: {
+    marginLeft: 28,
+    paddingRight: 32,
+    paddingBottom: 5,
+    fontSize: 11,
+    lineHeight: 17,
+    color: HOME_COLORS.textMuted,
   },
   modalButtonRow: {
     flexDirection: 'row',

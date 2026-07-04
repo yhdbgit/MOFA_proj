@@ -147,7 +147,7 @@ export default function ChatScreen({ navigation, route }) {
   );
 
   const handleSubmit = useCallback(() => {
-    sendMessage(inputText);
+    void sendMessage(inputText);
   }, [inputText, sendMessage]);
 
   const handleInputKeyPress = useCallback(
@@ -194,7 +194,7 @@ export default function ChatScreen({ navigation, route }) {
 
     handledInitialMessageRef.current = initialMessage;
     navigation.setParams({ initialMessage: undefined });
-    sendMessage(initialMessage);
+    void sendMessage(initialMessage);
   }, [initialMessage, navigation, sendMessage]);
 
   // 새 메시지와 답변 작성 표시가 추가될 때 항상 최신 대화가 보이도록 이동한다.
