@@ -68,7 +68,16 @@ public class AgentClient {
 			String chatSessionId,
 			String citizenMessage,
 			String countryCode,
-			List<ConversationMessage> conversationHistory
+			List<ConversationMessage> conversationHistory,
+			UserBasicInfo userBasicInfo
+	) {
+	}
+
+	public record UserBasicInfo(
+			String name,
+			String birthDate,
+			String phoneNumber,
+			String gender
 	) {
 	}
 

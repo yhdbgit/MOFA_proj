@@ -6,6 +6,8 @@ import java.util.Map;
 
 import com.a2d2.mofa.agent.AgentAnalysisResult;
 import com.a2d2.mofa.agent.AgentClient;
+import com.a2d2.mofa.citizen.CitizenProfileResponse;
+import com.a2d2.mofa.citizen.CitizenProfileService;
 import com.a2d2.mofa.notification.NotificationEvent;
 import com.a2d2.mofa.notification.NotificationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -17,17 +19,20 @@ public class ChatService {
 	private final AgentClient agentClient;
 	private final ChatSessionRepository chatSessionRepository;
 	private final ChatMessageRepository chatMessageRepository;
+	private final CitizenProfileService citizenProfileService;
 	private final NotificationEventPublisher eventPublisher;
 
 	public ChatService(
 			AgentClient agentClient,
 			ChatSessionRepository chatSessionRepository,
 			ChatMessageRepository chatMessageRepository,
+			CitizenProfileService citizenProfileService,
 			NotificationEventPublisher eventPublisher
 	) {
 		this.agentClient = agentClient;
 		this.chatSessionRepository = chatSessionRepository;
 		this.chatMessageRepository = chatMessageRepository;
+		this.citizenProfileService = citizenProfileService;
 		this.eventPublisher = eventPublisher;
 	}
 
@@ -96,13 +101,28 @@ public class ChatService {
 				.stream()
 				.map(message -> new AgentClient.ConversationMessage(message.getSenderType(), message.getContent()))
 				.toList();
+		CitizenProfileResponse profile = citizenProfileService.getProfile(chatSession.getCitizenId());
 
 		return agentClient.analyzeChat(new AgentClient.AnalyzeChatRequest(
 				chatSession.getId(),
 				chatMessage.getContent(),
 				chatSession.getCountryCode(),
-				conversationHistory
+				conversationHistory,
+				toUserBasicInfo(profile)
 		));
+	}
+
+	private AgentClient.UserBasicInfo toUserBasicInfo(CitizenProfileResponse profile) {
+		if (profile == null) {
+			return new AgentClient.UserBasicInfo("", "", "", "");
+		}
+
+		return new AgentClient.UserBasicInfo(
+				profile.name(),
+				profile.birthDate(),
+				profile.phoneNumber(),
+				profile.gender()
+		);
 	}
 
 	private void addAgentReply(ChatSessionEntity chatSession, String citizenReply) {

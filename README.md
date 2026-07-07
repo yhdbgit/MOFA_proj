@@ -107,11 +107,14 @@ docker compose -f infra/docker/compose.yaml up -d postgres redis
 cd /Users/hyeokjae/Desktop/MOFAapp/backend/services/ai-agent-server
 source .venv/bin/activate
 uvicorn app.main:app --reload --port 8000
+or
+uvicorn app.main_aiagent:app --reload --port 8000
 ```
 
 ### 3. Spring Boot Main API
 
 ```bash
+sudo lsof -ti :8080 | xargs sudo kill -9 (기존 실행중인 8080포트 강제 종료 코드: 이미 8080포트가 실행중이라면)
 cd /Users/hyeokjae/Desktop/MOFAapp/backend/services/main-api/mofa
 ./gradlew bootRun
 ```
