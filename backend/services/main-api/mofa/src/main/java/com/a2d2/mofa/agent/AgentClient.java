@@ -64,6 +64,44 @@ public class AgentClient {
 		}
 	}
 
+	public OfficialDocumentDraftResult draftOfficialDocument(DraftOfficialDocumentRequest request) {
+		try {
+			String requestBody = objectMapper.writeValueAsString(request);
+			HttpRequest httpRequest = HttpRequest.newBuilder()
+					.uri(URI.create(baseUrl + "/v1/agent/draft-official-document"))
+					.header("Content-Type", "application/json")
+					.header("Accept", "application/json")
+					.version(HttpClient.Version.HTTP_1_1)
+					.POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+					.build();
+
+			HttpResponse<String> httpResponse = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+			if (httpResponse.statusCode() < 200 || httpResponse.statusCode() >= 300) {
+				return OfficialDocumentDraftResult.unavailable(
+						"AI agent server returned status " + httpResponse.statusCode() + ": " + httpResponse.body()
+				);
+			}
+
+			DraftOfficialDocumentResponse response = objectMapper.readValue(
+					httpResponse.body(),
+					DraftOfficialDocumentResponse.class
+			);
+
+			if (response == null) {
+				return OfficialDocumentDraftResult.unavailable("AI agent server returned an empty response.");
+			}
+
+			return response.toResult();
+		}
+		catch (IOException exception) {
+			return OfficialDocumentDraftResult.unavailable("AI agent server request failed: " + exception.getMessage());
+		}
+		catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+			return OfficialDocumentDraftResult.unavailable("AI agent server request was interrupted.");
+		}
+	}
+
 	public record AnalyzeChatRequest(
 			String chatSessionId,
 			String citizenMessage,
@@ -87,9 +125,20 @@ public class AgentClient {
 	) {
 	}
 
+	public record DraftOfficialDocumentRequest(
+			String chatSessionId,
+			String countryCode,
+			List<ConversationMessage> conversationHistory,
+			UserBasicInfo userBasicInfo
+	) {
+	}
+
 	private record AnalyzeChatResponse(
 			String agentRunId,
 			String severity,
+			String detectedCountry,
+			String incidentType,
+			String incidentLabel,
 			String citizenReply,
 			List<String> recommendedActions,
 			AgentAnalysisResult.OfficialDocumentDraft officialDocumentDraft,
@@ -102,10 +151,36 @@ public class AgentClient {
 					"COMPLETED",
 					agentRunId,
 					severity,
+					detectedCountry,
+					incidentType,
+					incidentLabel,
 					citizenReply,
 					recommendedActions == null ? List.of() : recommendedActions,
 					officialDocumentDraft,
 					ragSources == null ? List.of() : ragSources,
+					generatedAt,
+					null
+			);
+		}
+	}
+
+	private record DraftOfficialDocumentResponse(
+			String agentRunId,
+			String title,
+			String body,
+			List<String> missingFields,
+			List<String> recommendedReviewNotes,
+			Instant generatedAt
+	) {
+
+		private OfficialDocumentDraftResult toResult() {
+			return new OfficialDocumentDraftResult(
+					"COMPLETED",
+					agentRunId,
+					title,
+					body,
+					missingFields == null ? List.of() : missingFields,
+					recommendedReviewNotes == null ? List.of() : recommendedReviewNotes,
 					generatedAt,
 					null
 			);

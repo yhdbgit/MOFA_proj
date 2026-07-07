@@ -8,6 +8,10 @@ public record ChatSessionResponse(
 		String citizenId,
 		String countryCode,
 		String status,
+		String detectedCountry,
+		String incidentType,
+		String incidentLabel,
+		String severity,
 		Instant createdAt,
 		List<ChatMessageResponse> messages
 ) {

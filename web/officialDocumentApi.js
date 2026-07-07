@@ -1,17 +1,13 @@
 import { buildBackendUrl } from './config.js';
 
-const OFFICIAL_DOCUMENT_DRAFT_URL = buildBackendUrl(
-  '/official-documents/draft',
-);
-const OFFICIAL_DOCUMENT_PDF_URL = buildBackendUrl('/official-documents/pdf');
 const REQUEST_TIMEOUT_MS = 120000;
 
 async function readErrorMessage(response, fallback) {
   const payload = await response.json().catch(() => null);
-  return payload?.detail || fallback;
+  return payload?.message || payload?.detail || fallback;
 }
 
-async function requestWithTimeout(url, options) {
+async function requestWithTimeout(path, options = {}) {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(
     () => controller.abort(),
@@ -19,8 +15,9 @@ async function requestWithTimeout(url, options) {
   );
 
   try {
-    return await fetch(url, {
+    return await fetch(buildBackendUrl(path), {
       ...options,
+      cache: 'no-store',
       signal: controller.signal,
     });
   } catch (error) {
@@ -34,66 +31,107 @@ async function requestWithTimeout(url, options) {
   }
 }
 
-export async function createOfficialDocumentDraft(messages) {
-  const response = await requestWithTimeout(OFFICIAL_DOCUMENT_DRAFT_URL, {
-    method: 'POST',
+async function requestJson(path, options, fallbackMessage) {
+  const response = await requestWithTimeout(path, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...options?.headers,
     },
-    cache: 'no-store',
-    body: JSON.stringify({ messages }),
   });
 
   if (!response.ok) {
     throw new Error(
-      await readErrorMessage(response, `공문 생성 실패 (${response.status})`),
+      await readErrorMessage(response, `${fallbackMessage} (${response.status})`),
     );
   }
 
-  const payload = await response.json();
+  return response.json();
+}
 
-  if (!payload?.draft || !Array.isArray(payload?.missing_fields)) {
-    throw new Error('공문 초안 응답 형식이 올바르지 않습니다.');
+export async function createOfficialDocumentDraft(chatId) {
+  return requestJson(
+    `/api/chats/${chatId}/official-documents/draft`,
+    { method: 'POST' },
+    '공문 초안 생성 실패',
+  );
+}
+
+export async function fetchOfficialDocuments(chatId) {
+  const payload = await requestJson(
+    `/api/chats/${chatId}/official-documents`,
+    { method: 'GET' },
+    '공문 목록 조회 실패',
+  );
+
+  if (!Array.isArray(payload)) {
+    throw new Error('공문 목록 응답 형식이 올바르지 않습니다.');
   }
 
   return payload;
 }
 
-function createPdfFilename(title) {
-  const safeTitle = String(title || '공문-초안')
+export async function fetchOfficialDocument(documentId) {
+  return requestJson(
+    `/api/official-documents/${documentId}`,
+    { method: 'GET' },
+    '공문 상세 조회 실패',
+  );
+}
+
+export async function updateOfficialDocument(documentId, draft) {
+  return requestJson(
+    `/api/official-documents/${documentId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        title: draft.title,
+        body: draft.body,
+      }),
+    },
+    '공문 저장 실패',
+  );
+}
+
+export async function approveOfficialDocument(documentId) {
+  return requestJson(
+    `/api/official-documents/${documentId}/approve`,
+    { method: 'POST' },
+    '공문 승인 실패',
+  );
+}
+
+function createDocxFilename(document) {
+  const safeTitle = String(document?.title || '공문')
     .replace(/[\\/:*?"<>|]/g, '')
     .trim()
     .slice(0, 60);
 
-  return `${safeTitle || '공문-초안'}.pdf`;
+  return `${safeTitle || '공문'}.docx`;
 }
 
-export async function downloadOfficialDocumentPdf(draft) {
-  const response = await requestWithTimeout(OFFICIAL_DOCUMENT_PDF_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ draft }),
-  });
+export async function downloadOfficialDocumentDocx(officialDocument) {
+  const response = await requestWithTimeout(
+    `/api/official-documents/${officialDocument.id}/docx`,
+    { method: 'GET' },
+  );
 
   if (!response.ok) {
     throw new Error(
-      await readErrorMessage(response, `PDF 저장 실패 (${response.status})`),
+      await readErrorMessage(response, `DOCX 다운로드 실패 (${response.status})`),
     );
   }
 
   const contentType = response.headers.get('Content-Type') || '';
-
-  if (!contentType.includes('application/pdf')) {
-    throw new Error('PDF 응답 형식이 올바르지 않습니다.');
+  if (!contentType.includes('wordprocessingml.document')) {
+    throw new Error('DOCX 응답 형식이 올바르지 않습니다.');
   }
 
   const blob = await response.blob();
   const downloadUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = downloadUrl;
-  link.download = createPdfFilename(draft.title);
+  link.download = createDocxFilename(officialDocument);
   document.body.append(link);
   link.click();
   link.remove();

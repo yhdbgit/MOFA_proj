@@ -7,6 +7,9 @@ public record AgentAnalysisResult(
 		String status,
 		String agentRunId,
 		String severity,
+		String detectedCountry,
+		String incidentType,
+		String incidentLabel,
 		String citizenReply,
 		List<String> recommendedActions,
 		OfficialDocumentDraft officialDocumentDraft,
@@ -18,6 +21,9 @@ public record AgentAnalysisResult(
 	public static AgentAnalysisResult unavailable(String errorMessage) {
 		return new AgentAnalysisResult(
 				"UNAVAILABLE",
+				null,
+				null,
+				null,
 				null,
 				null,
 				null,

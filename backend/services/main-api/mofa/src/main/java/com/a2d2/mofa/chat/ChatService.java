@@ -8,6 +8,7 @@ import com.a2d2.mofa.agent.AgentAnalysisResult;
 import com.a2d2.mofa.agent.AgentClient;
 import com.a2d2.mofa.citizen.CitizenProfileResponse;
 import com.a2d2.mofa.citizen.CitizenProfileService;
+import com.a2d2.mofa.document.OfficialDocumentService;
 import com.a2d2.mofa.notification.NotificationEvent;
 import com.a2d2.mofa.notification.NotificationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -21,19 +22,22 @@ public class ChatService {
 	private final ChatMessageRepository chatMessageRepository;
 	private final CitizenProfileService citizenProfileService;
 	private final NotificationEventPublisher eventPublisher;
+	private final OfficialDocumentService officialDocumentService;
 
 	public ChatService(
 			AgentClient agentClient,
 			ChatSessionRepository chatSessionRepository,
 			ChatMessageRepository chatMessageRepository,
 			CitizenProfileService citizenProfileService,
-			NotificationEventPublisher eventPublisher
+			NotificationEventPublisher eventPublisher,
+			OfficialDocumentService officialDocumentService
 	) {
 		this.agentClient = agentClient;
 		this.chatSessionRepository = chatSessionRepository;
 		this.chatMessageRepository = chatMessageRepository;
 		this.citizenProfileService = citizenProfileService;
 		this.eventPublisher = eventPublisher;
+		this.officialDocumentService = officialDocumentService;
 	}
 
 	@Transactional
@@ -67,7 +71,14 @@ public class ChatService {
 		if ("CITIZEN".equals(request.senderType())) {
 			agentResult = analyzeCitizenMessage(chatSession, chatMessage);
 			if ("COMPLETED".equals(agentResult.status()) && agentResult.citizenReply() != null) {
+				chatSession.updateAnalysisMetadata(
+						agentResult.detectedCountry(),
+						agentResult.incidentType(),
+						agentResult.incidentLabel(),
+						agentResult.severity()
+				);
 				addAgentReply(chatSession, agentResult.citizenReply());
+				createOfficialDocumentDraftIfUrgent(chatSession, agentResult);
 			}
 		}
 
@@ -138,6 +149,22 @@ public class ChatService {
 		publishAgentResultReady(chatSession);
 	}
 
+	private void createOfficialDocumentDraftIfUrgent(
+			ChatSessionEntity chatSession,
+			AgentAnalysisResult agentResult
+	) {
+		if (!"HIGH".equals(agentResult.severity())) {
+			return;
+		}
+
+		try {
+			officialDocumentService.createDraftIfAbsent(chatSession.getId());
+		}
+		catch (RuntimeException exception) {
+			publishDocumentDraftFailed(chatSession, exception);
+		}
+	}
+
 	private void publishChatCreated(ChatSessionEntity chatSession) {
 		eventPublisher.publish(new NotificationEvent(
 				"CHAT_CREATED",
@@ -173,6 +200,15 @@ public class ChatService {
 		));
 	}
 
+	private void publishDocumentDraftFailed(ChatSessionEntity chatSession, RuntimeException exception) {
+		eventPublisher.publish(new NotificationEvent(
+				"OFFICIAL_DOCUMENT_DRAFT_FAILED",
+				chatSession.getId(),
+				Instant.now(),
+				Map.of("errorMessage", exception.getMessage() == null ? "Unknown document draft failure" : exception.getMessage())
+		));
+	}
+
 	private ChatSessionResponse toResponse(ChatSessionEntity chatSession) {
 		List<ChatMessageResponse> messages = chatMessageRepository
 				.findByChatSessionIdOrderByCreatedAtAsc(chatSession.getId())
@@ -185,6 +221,10 @@ public class ChatService {
 				chatSession.getCitizenId(),
 				chatSession.getCountryCode(),
 				chatSession.getStatus(),
+				chatSession.getDetectedCountry(),
+				chatSession.getIncidentType(),
+				chatSession.getIncidentLabel(),
+				chatSession.getSeverity(),
 				chatSession.getCreatedAt(),
 				messages
 		);

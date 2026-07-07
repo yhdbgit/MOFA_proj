@@ -87,10 +87,29 @@ class RagSource(BaseModel):
 class AnalyzeChatResponse(BaseModel):
     agentRunId: str
     severity: str
+    detectedCountry: Optional[str] = None
+    incidentType: Optional[str] = None
+    incidentLabel: Optional[str] = None
     citizenReply: str
     recommendedActions: list[str]
     officialDocumentDraft: Optional[dict[str, str]]
     ragSources: list[RagSource]
+    generatedAt: datetime
+
+
+class DraftOfficialDocumentRequest(BaseModel):
+    chatSessionId: str
+    countryCode: str = Field(..., min_length=2, max_length=2)
+    conversationHistory: list[ConversationMessage] = Field(default_factory=list)
+    userBasicInfo: dict[str, Any] = Field(default_factory=dict)
+
+
+class DraftOfficialDocumentResponse(BaseModel):
+    agentRunId: str
+    title: str
+    body: str
+    missingFields: list[str]
+    recommendedReviewNotes: list[str]
     generatedAt: datetime
 
 
@@ -486,6 +505,155 @@ def infer_country(message: str) -> str:
             return country
 
     return ""
+
+
+INCIDENT_RULES = [
+    ("KIDNAPPING", "납치 신고", ["납치", "인질", "감금", "억류"]),
+    ("PASSPORT_LOSS", "여권 분실 상담", ["여권 분실", "여권 잃어", "여권을 잃", "여권 도난"]),
+    ("THEFT", "도난 신고", ["도난", "절도", "지갑", "소매치기", "강도"]),
+    ("DETENTION", "체포·구금 상담", ["체포", "구금", " detained", "arrest"]),
+    ("ACCIDENT", "사고 신고", ["교통사고", "사고", "응급", "부상", "병원"]),
+    ("DEATH", "사망 신고", ["사망", "해외사망"]),
+    ("DISASTER", "재난 대피 상담", ["지진", "자연재해", "태풍", "홍수", "전쟁", "공습", "폭격"]),
+    ("PROTEST", "시위 안전 상담", ["시위", "집회", "폭동"]),
+]
+
+
+def detect_incident(text: str) -> tuple[str, str]:
+    normalized_text = text.lower()
+
+    for incident_type, incident_label, keywords in INCIDENT_RULES:
+        if any(keyword.lower() in normalized_text for keyword in keywords):
+            return incident_type, incident_label
+
+    return "CONSULAR_ASSISTANCE", "영사 상담"
+
+
+def document_topic(incident_label: str) -> str:
+    topic = incident_label.removesuffix(" 상담").removesuffix(" 신고").strip()
+    return topic or "재외국민 보호"
+
+
+def build_document_title(country: str, incident_label: str) -> str:
+    topic = document_topic(incident_label)
+
+    if country:
+        return f"{country} {topic} 관련 협조요청"
+
+    return f"재외국민 {topic} 관련 협조요청"
+
+
+def value_or_unknown(value: Any) -> str:
+    text = str(value or "").strip()
+    return text or "미확인"
+
+
+def format_gender(value: Any) -> str:
+    gender = str(value or "").strip().upper()
+
+    if gender == "MALE":
+        return "남"
+    if gender == "FEMALE":
+        return "여"
+
+    return value_or_unknown(value)
+
+
+def recipient_agency(country: str) -> str:
+    if country:
+        return f"{country} 주재 대한민국대사관 또는 관계부처"
+
+    return "관할 대한민국대사관 또는 관계부처"
+
+
+def case_summary(
+    user_info: dict[str, Any],
+    country: str,
+    incident_label: str,
+    latest_citizen_message: str,
+) -> str:
+    name = value_or_unknown(user_info.get("name"))
+    country_text = f"{country} 체류 중 " if country else "해외 체류 중 "
+    topic = document_topic(incident_label)
+    message = latest_citizen_message.strip()
+
+    if message:
+        return (
+            f"{name}님은 {country_text}{topic} 관련 상황을 신고하였으며, "
+            f"상담 내용상 \"{message}\"라고 진술하였습니다. "
+            "현재 신변 안전 확인과 관계기관의 기초 확인이 필요한 상황입니다."
+        )
+
+    return (
+        f"{name}님은 {country_text}{topic} 관련 영사 조력을 요청하였으며, "
+        "현재 신변 안전 확인과 관계기관의 기초 확인이 필요한 상황입니다."
+    )
+
+
+def requested_actions(incident_type: str) -> list[str]:
+    common_actions = [
+        "대상자의 소재 및 안전 여부 확인을 요청드립니다.",
+        "현지 관계기관의 사건 접수 여부와 담당자 정보를 공유해 주시기 바랍니다.",
+        "필요 시 공관과 대상자 간 연락 또는 영사 조력이 가능하도록 협조해 주시기 바랍니다.",
+    ]
+    incident_actions = {
+        "KIDNAPPING": [
+            "납치 또는 감금 가능성에 대한 긴급 확인과 필요한 보호 조치를 요청드립니다.",
+        ],
+        "DETENTION": [
+            "체포 또는 구금 장소, 적용 혐의, 접견 가능 여부 확인을 요청드립니다.",
+        ],
+        "PASSPORT_LOSS": [
+            "여권 분실 신고 접수 여부와 임시 여행문서 발급에 필요한 확인 협조를 요청드립니다.",
+        ],
+        "THEFT": [
+            "도난 피해 신고 접수 여부와 피해 사실 확인에 필요한 자료 제공을 요청드립니다.",
+        ],
+        "ACCIDENT": [
+            "대상자의 치료 기관, 건강 상태, 보호자 연락 필요 여부 확인을 요청드립니다.",
+        ],
+    }
+
+    return common_actions + incident_actions.get(incident_type, [])
+
+
+def build_official_document_body(
+    *,
+    country: str,
+    incident_type: str,
+    incident_label: str,
+    latest_citizen_message: str,
+    user_info: dict[str, Any],
+) -> str:
+    actions = "\n".join(
+        f"- {action}"
+        for action in requested_actions(incident_type)
+    )
+
+    return "\n".join(
+        [
+            "1. 수신기관",
+            recipient_agency(country),
+            "",
+            "2. 발신기관",
+            "소속: 외교부 재외국민 보호 담당",
+            "이름: 김영사",
+            "직책: 영사",
+            "",
+            "3. 대상자 신원",
+            f"성명: {value_or_unknown(user_info.get('name'))}",
+            f"생년월일: {value_or_unknown(user_info.get('birthDate'))}",
+            f"성별: {format_gender(user_info.get('gender'))}",
+            f"연락처: {value_or_unknown(user_info.get('phoneNumber'))}",
+            "국적: 대한민국",
+            "",
+            "4. 사건 개요",
+            case_summary(user_info, country, incident_label, latest_citizen_message),
+            "",
+            "5. 요청사항",
+            actions,
+        ]
+    )
 
 
 # 위기상황 공문 생성 흐름에서 쓰는 상담 내역/공문 helper.
@@ -1102,16 +1270,98 @@ async def run_multi_agent(request: AnalyzeChatRequest) -> dict[str, Any]:
     return await AGENT_GRAPH.ainvoke(create_initial_state(request))
 
 
+def latest_conversation_message(
+    messages: list[ConversationMessage],
+    sender_type: str,
+) -> str:
+    for message in reversed(messages):
+        if message.senderType == sender_type and message.content.strip():
+            return message.content.strip()
+    return ""
+
+
+def draft_missing_fields(messages: list[ConversationMessage]) -> list[str]:
+    joined_content = " ".join(message.content for message in messages)
+    checks = [
+        ("신고자 연락처", ["연락처", "전화", "휴대폰", "카카오", "이메일"]),
+        ("현재 위치", ["위치", "주소", "호텔", "공항", "경찰서", "대사관"]),
+        ("현지 신고 여부", ["신고", "경찰", "병원", "영사", "공관"]),
+    ]
+
+    return [
+        label
+        for label, keywords in checks
+        if not any(keyword in joined_content for keyword in keywords)
+    ]
+
+
 @app.post("/v1/agent/analyze-chat", response_model=AnalyzeChatResponse)
 async def analyze_chat(request: AnalyzeChatRequest) -> AnalyzeChatResponse:
     state = await run_multi_agent(request)
+    text = conversation_text(request)
+    incident_type, incident_label = detect_incident(text)
+    detected_country = state.get("country") or infer_country(text)
+    official_document = state["official_document"]
+    if official_document:
+        official_document = {
+            **official_document,
+            "title": build_document_title(detected_country, incident_label),
+            "body": build_official_document_body(
+                country=detected_country,
+                incident_type=incident_type,
+                incident_label=incident_label,
+                latest_citizen_message=request.citizenMessage,
+                user_info=request.userBasicInfo,
+            ),
+        }
 
     return AnalyzeChatResponse(
         agentRunId=f"agent-run-{uuid4()}",
         severity="HIGH" if state["is_crisis"] else "NORMAL",
+        detectedCountry=detected_country or None,
+        incidentType=incident_type,
+        incidentLabel=incident_label,
         citizenReply=state["answer"],
         recommendedActions=state["recommended_actions"],
-        officialDocumentDraft=state["official_document"],
+        officialDocumentDraft=official_document,
         ragSources=state["rag_sources"],
+        generatedAt=datetime.now(timezone.utc),
+    )
+
+
+@app.post("/v1/agent/draft-official-document", response_model=DraftOfficialDocumentResponse)
+async def draft_official_document(
+    request: DraftOfficialDocumentRequest,
+) -> DraftOfficialDocumentResponse:
+    latest_citizen_message = latest_conversation_message(request.conversationHistory, "CITIZEN")
+    latest_agent_message = latest_conversation_message(request.conversationHistory, "AGENT")
+    text = conversation_text(
+        AnalyzeChatRequest(
+            chatSessionId=request.chatSessionId,
+            citizenMessage=latest_citizen_message,
+            countryCode=request.countryCode,
+            conversationHistory=request.conversationHistory,
+            userBasicInfo=request.userBasicInfo,
+        )
+    )
+    incident_type, incident_label = detect_incident(text)
+    country = infer_country(text)
+    body = build_official_document_body(
+        country=country,
+        incident_type=incident_type,
+        incident_label=incident_label,
+        latest_citizen_message=latest_citizen_message,
+        user_info=request.userBasicInfo,
+    )
+
+    return DraftOfficialDocumentResponse(
+        agentRunId=f"document-run-{uuid4()}",
+        title=build_document_title(country, incident_label),
+        body=body,
+        missingFields=draft_missing_fields(request.conversationHistory),
+        recommendedReviewNotes=[
+            "신고자 인적사항과 연락처를 확인하세요.",
+            "현지 공관 또는 관계기관과의 후속 조치 필요 여부를 검토하세요.",
+        ],
         generatedAt=datetime.now(timezone.utc),
     )

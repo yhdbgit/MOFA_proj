@@ -313,6 +313,10 @@ button {
   background: var(--white);
 }
 
+.chat-header > div:first-child {
+  min-width: 0;
+}
+
 .chat-header h2 {
   color: var(--navy);
   font-size: 16px;
@@ -329,6 +333,7 @@ button {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  max-width: min(640px, 100%);
   min-height: 28px;
 }
 
@@ -347,7 +352,7 @@ button {
 }
 
 .identity-badge {
-  max-width: min(560px, 52vw);
+  max-width: min(560px, 42vw);
   padding: 0 10px;
   border: 0;
   overflow: hidden;
@@ -374,7 +379,7 @@ button {
 }
 
 .identity-badge.expanded {
-  max-width: min(760px, 62vw);
+  max-width: min(420px, 34vw);
 }
 
 .citizen-id-chip {
@@ -425,37 +430,60 @@ button {
 
 .chat-header-actions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 10px;
 }
 
 .message-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
   padding: 5px 10px;
   border-radius: 999px;
   background: var(--blue-soft);
   color: var(--blue);
   font-size: 11px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.document-generate-button {
+.document-generate-button,
+.document-manual-button {
   padding: 9px 16px;
   border: 0;
   border-radius: 8px;
-  background: var(--blue);
-  box-shadow: 0 1px 3px rgb(45 108 179 / 30%);
-  color: var(--white);
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
+}
+
+.document-generate-button {
+  background: var(--blue);
+  box-shadow: 0 1px 3px rgb(45 108 179 / 30%);
+  color: var(--white);
+}
+
+.document-manual-button {
+  border: 1px solid var(--blue);
+  background: var(--white);
+  color: var(--blue);
 }
 
 .document-generate-button:hover:not(:disabled) {
   background: var(--navy);
 }
 
-.document-generate-button:disabled {
+.document-manual-button:hover:not(:disabled) {
+  background: var(--blue-soft);
+}
+
+.document-generate-button:disabled,
+.document-manual-button:disabled {
   background: var(--line);
+  border-color: var(--line);
   box-shadow: none;
   color: #94a3b8;
   cursor: default;
@@ -531,6 +559,16 @@ button {
   border-bottom-right-radius: 4px;
   background: var(--blue);
   color: var(--white);
+}
+
+.message.assistant.pending .message-bubble {
+  background: #dbeafe;
+  color: #1e40af;
+  font-weight: 700;
+}
+
+.message.pending .message-time {
+  color: #64748b;
 }
 
 .message.staff .message-bubble {
@@ -629,6 +667,12 @@ button {
   line-height: 1.6;
 }
 
+.document-empty h3 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 15px;
+}
+
 .document-spinner {
   width: 32px;
   height: 32px;
@@ -663,6 +707,63 @@ button {
 
 .missing-information-notice p {
   margin: 3px 0 0;
+}
+
+.missing-information-notice ul,
+.review-note-list ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.missing-information-notice li,
+.review-note-list li {
+  margin-top: 3px;
+}
+
+.review-note-list {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: var(--blue-soft);
+  color: var(--navy);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.document-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.document-status {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: #75500f;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.document-status-reviewed {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.document-status-approved {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.document-run-id {
+  overflow: hidden;
+  color: var(--slate);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .official-document {
@@ -756,23 +857,35 @@ button {
 }
 
 .document-panel-footer {
-  display: flex;
-  min-height: 66px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(112px, max-content));
+  min-height: 92px;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 11px 18px;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 18px;
   border-top: 1px solid var(--line);
   background: var(--panel-background);
 }
 
 .document-panel-footer p {
-  flex: 1;
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 16px;
   margin: 0;
   color: var(--slate);
   font-size: 11px;
   line-height: 1.4;
+  text-align: center;
+}
+
+.document-panel-footer p:empty {
+  display: none;
+}
+
+.document-panel-footer button {
+  margin: 0 5px;
 }
 
 .document-panel-footer p.error {
@@ -783,20 +896,40 @@ button {
   color: var(--green);
 }
 
-.document-save-button {
+.document-save-button,
+.document-approve-button,
+.document-download-button {
   min-width: 112px;
   padding: 10px 18px;
   border: 0;
   border-radius: 8px;
-  background: var(--green);
-  box-shadow: 0 1px 3px rgb(27 112 72 / 30%);
-  color: var(--white);
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.document-save-button:disabled {
+.document-save-button {
+  background: var(--green);
+  box-shadow: 0 1px 3px rgb(27 112 72 / 30%);
+  color: var(--white);
+}
+
+.document-approve-button {
+  background: var(--blue);
+  box-shadow: 0 1px 3px rgb(45 108 179 / 30%);
+  color: var(--white);
+}
+
+.document-download-button {
+  border: 1px solid var(--green);
+  background: var(--white);
+  color: var(--green);
+}
+
+.document-save-button:disabled,
+.document-approve-button:disabled,
+.document-download-button:disabled {
   opacity: 0.55;
   cursor: default;
 }

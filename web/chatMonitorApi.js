@@ -70,6 +70,10 @@ export function normalizeChat(chat) {
     citizenId: chat.citizenId,
     countryCode: chat.countryCode,
     status: chat.status,
+    detectedCountry: chat.detectedCountry ?? null,
+    incidentType: chat.incidentType ?? null,
+    incidentLabel: chat.incidentLabel ?? null,
+    severity: chat.severity ?? null,
     createdAt: chat.createdAt,
     messages,
   };
@@ -122,6 +126,10 @@ export function openChatEventStream({ onEvent, onOpen, onError }) {
     'CHAT_CREATED',
     'CHAT_MESSAGE_CREATED',
     'AGENT_RESULT_READY',
+    'OFFICIAL_DOCUMENT_DRAFTED',
+    'OFFICIAL_DOCUMENT_UPDATED',
+    'OFFICIAL_DOCUMENT_APPROVED',
+    'OFFICIAL_DOCUMENT_DRAFT_FAILED',
   ];
 
   source.onopen = () => {

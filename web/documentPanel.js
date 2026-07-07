@@ -1,26 +1,8 @@
-const MISSING_FIELD_LABELS = {
-  citizen_name: '민원인 이름',
-  victim_name: '피해자 이름',
-  contact: '연락처',
-  relationship: '민원인과 피해자의 관계',
-  location: '사건 발생 국가·도시',
-  incident_datetime: '사건 발생 일시',
-  incident_summary: '사건 내용',
-  requested_assistance: '요청 영사조력',
-  birth_date: '생년월일',
+const STATUS_LABELS = {
+  DRAFT: '초안',
+  REVIEWED: '검토 저장',
+  APPROVED: '승인 완료',
 };
-
-const DOCUMENT_FIELDS = [
-  ['document_number', '문서번호', 'text'],
-  ['document_date', '작성일', 'text'],
-  ['recipient', '수신', 'text'],
-  ['via', '경유', 'text'],
-  ['sender', '발신', 'text'],
-  ['title', '제목', 'text'],
-  ['body', '본문', 'textarea'],
-  ['issuer', '발신 명의', 'text'],
-  ['approver', '담당자', 'text'],
-];
 
 function createField(fieldName, labelText, inputType, value) {
   const wrapper = document.createElement('label');
@@ -48,6 +30,28 @@ function createField(fieldName, labelText, inputType, value) {
   return wrapper;
 }
 
+function createInfoList(title, values, className) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return null;
+  }
+
+  const container = document.createElement('section');
+  container.className = className;
+
+  const heading = document.createElement('strong');
+  heading.textContent = title;
+
+  const list = document.createElement('ul');
+  values.forEach((value) => {
+    const item = document.createElement('li');
+    item.textContent = value;
+    list.append(item);
+  });
+
+  container.append(heading, list);
+  return container;
+}
+
 export function renderDocumentLoading(container) {
   container.replaceChildren();
 
@@ -63,7 +67,7 @@ export function renderDocumentEmpty(container) {
 
   const empty = document.createElement('div');
   empty.className = 'document-empty';
-  empty.innerHTML = '<span aria-hidden="true">📄</span><p>공문 생성 버튼을 누르면<br />편집 가능한 초안이 표시됩니다.</p>';
+  empty.innerHTML = '<span aria-hidden="true">📄</span><h3>빈 공문입니다.</h3><p>아직 이 상담에 작성된 공문 초안이 없습니다.<br />공문 수동 생성 버튼으로 Agent 초안을 만들 수 있습니다.</p>';
   container.append(empty);
 }
 
@@ -84,25 +88,44 @@ export function renderDocumentError(container, message) {
   container.append(error);
 }
 
-export function renderDocumentDraft(container, result) {
+export function renderDocumentDraft(container, officialDocument) {
   container.replaceChildren();
+
   const scroll = document.createElement('div');
   scroll.className = 'document-scroll';
 
-  if (result.missing_fields.length > 0) {
-    const notice = document.createElement('div');
-    notice.className = 'missing-information-notice';
+  const meta = document.createElement('div');
+  meta.className = 'document-meta';
 
-    const title = document.createElement('strong');
-    title.textContent = '확인되지 않은 정보';
+  const status = document.createElement('span');
+  status.className = `document-status document-status-${String(officialDocument.status).toLowerCase()}`;
+  status.textContent = STATUS_LABELS[officialDocument.status] || officialDocument.status;
 
-    const description = document.createElement('p');
-    description.textContent = result.missing_fields
-      .map((field) => MISSING_FIELD_LABELS[field] || field)
-      .join(', ');
+  const runId = document.createElement('span');
+  runId.className = 'document-run-id';
+  runId.textContent = officialDocument.agentRunId
+    ? `Agent ${officialDocument.agentRunId}`
+    : 'Agent run 없음';
 
-    notice.append(title, description);
-    scroll.append(notice);
+  meta.append(status, runId);
+  scroll.append(meta);
+
+  const missingFields = createInfoList(
+    '확인 필요 정보',
+    officialDocument.missingFields,
+    'missing-information-notice',
+  );
+  if (missingFields) {
+    scroll.append(missingFields);
+  }
+
+  const reviewNotes = createInfoList(
+    '검토 권고',
+    officialDocument.recommendedReviewNotes,
+    'review-note-list',
+  );
+  if (reviewNotes) {
+    scroll.append(reviewNotes);
   }
 
   const form = document.createElement('form');
@@ -118,13 +141,12 @@ export function renderDocumentDraft(container, result) {
   organizationEnglish.className = 'document-organization-english';
   organizationEnglish.textContent = 'MINISTRY OF FOREIGN AFFAIRS';
 
-  form.append(organization, organizationEnglish);
-
-  DOCUMENT_FIELDS.forEach(([fieldName, label, inputType]) => {
-    form.append(
-      createField(fieldName, label, inputType, result.draft[fieldName]),
-    );
-  });
+  form.append(
+    organization,
+    organizationEnglish,
+    createField('title', '제목', 'text', officialDocument.title),
+    createField('body', '본문', 'textarea', officialDocument.body),
+  );
 
   scroll.append(form);
   container.append(scroll);
@@ -137,12 +159,12 @@ export function readDocumentDraft(container) {
     draft[input.dataset.documentField] = input.value.trim();
   });
 
-  const requiredFields = ['document_number', 'document_date', 'sender', 'title', 'body'];
-  const missingRequiredField = requiredFields.find((field) => !draft[field]);
+  if (!draft.title) {
+    throw new Error('제목을 입력해 주세요.');
+  }
 
-  if (missingRequiredField) {
-    const label = DOCUMENT_FIELDS.find(([field]) => field === missingRequiredField)?.[1];
-    throw new Error(`${label || missingRequiredField} 항목을 입력해 주세요.`);
+  if (!draft.body) {
+    throw new Error('본문을 입력해 주세요.');
   }
 
   return draft;

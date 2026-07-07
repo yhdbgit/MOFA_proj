@@ -25,6 +25,18 @@ public class ChatSessionEntity {
 	@Column(nullable = false, length = 20)
 	private String status;
 
+	@Column(length = 80)
+	private String detectedCountry;
+
+	@Column(length = 60)
+	private String incidentType;
+
+	@Column(length = 120)
+	private String incidentLabel;
+
+	@Column(length = 20)
+	private String severity;
+
 	@Column(nullable = false)
 	private Instant createdAt;
 
@@ -55,7 +67,43 @@ public class ChatSessionEntity {
 		return status;
 	}
 
+	public String getDetectedCountry() {
+		return detectedCountry;
+	}
+
+	public String getIncidentType() {
+		return incidentType;
+	}
+
+	public String getIncidentLabel() {
+		return incidentLabel;
+	}
+
+	public String getSeverity() {
+		return severity;
+	}
+
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	public void updateAnalysisMetadata(
+			String detectedCountry,
+			String incidentType,
+			String incidentLabel,
+			String severity
+	) {
+		this.detectedCountry = keepExistingWhenBlank(this.detectedCountry, detectedCountry);
+		this.incidentType = keepExistingWhenBlank(this.incidentType, incidentType);
+		this.incidentLabel = keepExistingWhenBlank(this.incidentLabel, incidentLabel);
+		this.severity = keepExistingWhenBlank(this.severity, severity);
+	}
+
+	private String keepExistingWhenBlank(String currentValue, String nextValue) {
+		if (nextValue == null || nextValue.isBlank()) {
+			return currentValue;
+		}
+
+		return nextValue.strip();
 	}
 }
