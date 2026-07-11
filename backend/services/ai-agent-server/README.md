@@ -51,3 +51,19 @@ curl -X POST http://localhost:8000/v1/agent/analyze-chat \
   -H 'Content-Type: application/json' \
   -d '{"chatSessionId":"chat-demo-1","citizenMessage":"여권을 분실했습니다.","countryCode":"JP","conversationHistory":[]}'
 ```
+
+Run Realtime transcription session issuing:
+
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+```bash
+curl -X POST http://localhost:8000/v1/realtime/transcription-session
+```
+
+The browser call-assist console uses this endpoint to receive a short-lived
+Realtime client secret. The current local default is `gpt-realtime-whisper`;
+if the project does not have access to that model, the browser console should
+show the OpenAI access error instead of silently falling back to another model.
+Keep the real OpenAI API key only in `.env` on the AI agent server.

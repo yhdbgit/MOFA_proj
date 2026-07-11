@@ -52,6 +52,34 @@ function createInfoList(title, values, className) {
   return container;
 }
 
+function extractLegalBasisFromBody(body) {
+  const lines = String(body ?? '').split(/\r?\n/);
+  const basisLines = [];
+  let inBasisSection = false;
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.trim();
+
+    if (/^\d+\.\s*관련 근거$/.test(line)) {
+      inBasisSection = true;
+      return;
+    }
+
+    if (!inBasisSection) {
+      return;
+    }
+
+    if (!line || /^\d+\.\s+/.test(line)) {
+      inBasisSection = false;
+      return;
+    }
+
+    basisLines.push(line.replace(/^[-*]\s*/, ''));
+  });
+
+  return basisLines;
+}
+
 export function renderDocumentLoading(container) {
   container.replaceChildren();
 
@@ -126,6 +154,15 @@ export function renderDocumentDraft(container, officialDocument) {
   );
   if (reviewNotes) {
     scroll.append(reviewNotes);
+  }
+
+  const legalBasis = createInfoList(
+    '관련 근거',
+    extractLegalBasisFromBody(officialDocument.body),
+    'legal-basis-list',
+  );
+  if (legalBasis) {
+    scroll.append(legalBasis);
   }
 
   const form = document.createElement('form');

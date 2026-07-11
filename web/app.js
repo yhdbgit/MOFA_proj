@@ -272,8 +272,18 @@ const INCIDENT_RULES = [
   },
 ];
 
+const OUT_OF_SCOPE_INCIDENT_TYPE = 'OUT_OF_SCOPE';
+const OUT_OF_SCOPE_INCIDENT_LABEL = '상담 범위 외 질문';
+
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function isOutOfScopeChat(chat) {
+  return (
+    normalizeText(chat?.incidentType) === OUT_OF_SCOPE_INCIDENT_TYPE ||
+    normalizeText(chat?.incidentLabel) === OUT_OF_SCOPE_INCIDENT_LABEL
+  );
 }
 
 function collectChatText(chat) {
@@ -289,6 +299,10 @@ function inferCountryFromText(text) {
 }
 
 function resolveCountryName(chat) {
+  if (isOutOfScopeChat(chat)) {
+    return '국가 미확인';
+  }
+
   const detectedCountry = normalizeText(chat?.detectedCountry);
   if (detectedCountry) {
     return detectedCountry;
@@ -312,6 +326,10 @@ function inferIncidentLabelFromText(text) {
 }
 
 function resolveIncidentLabel(chat) {
+  if (isOutOfScopeChat(chat)) {
+    return OUT_OF_SCOPE_INCIDENT_LABEL;
+  }
+
   const incidentLabel = normalizeText(chat?.incidentLabel);
   if (incidentLabel) {
     return incidentLabel;
@@ -321,6 +339,10 @@ function resolveIncidentLabel(chat) {
 }
 
 function formatChatTitle(chat) {
+  if (isOutOfScopeChat(chat)) {
+    return OUT_OF_SCOPE_INCIDENT_LABEL;
+  }
+
   return `${resolveCountryName(chat)} ${resolveIncidentLabel(chat)}`;
 }
 
@@ -782,7 +804,7 @@ function renderChatMeta(activeChat) {
   const country = document.createElement('span');
   country.className = 'meta-token country';
   country.textContent = resolveCountryName(activeChat);
-  country.title = activeChat.countryCode
+  country.title = activeChat.countryCode && !isOutOfScopeChat(activeChat)
     ? `초기 국가코드: ${activeChat.countryCode}`
     : '';
 

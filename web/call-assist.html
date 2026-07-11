@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="실시간 전사와 영사 매뉴얼 추천을 제공하는 상담관용 전화상담 콘솔"
+    />
+    <title>영사콜센터 전화상담 콘솔</title>
+    <link rel="stylesheet" href="./call-assist.css" />
+  </head>
+  <body>
+    <div class="call-shell">
+      <header class="call-topbar">
+        <div class="service-title">
+          <span class="service-mark" aria-hidden="true"></span>
+          <div>
+            <h1>영사콜센터 전화상담 콘솔</h1>
+            <p>실시간 전사 · 매뉴얼/법률 추천 · 상담 요약</p>
+          </div>
+        </div>
+
+        <div class="session-controls" aria-label="상담 제어">
+          <button id="startButton" class="primary-action" type="button" disabled>
+            마이크 시작
+          </button>
+          <button id="stopButton" class="secondary-action" type="button" disabled>
+            상담 종료
+          </button>
+        </div>
+      </header>
+
+      <section class="session-strip" aria-label="상담 상태">
+        <div class="status-pill live" id="recordingStatus">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="recordingLabel">대기 중</span>
+        </div>
+        <div class="session-metric">
+          <span>경과</span>
+          <strong id="elapsedTime">00:00</strong>
+        </div>
+        <div class="session-metric">
+          <span>국가</span>
+          <strong id="countryValue">미감지</strong>
+        </div>
+        <div class="session-metric">
+          <span>유형</span>
+          <strong id="incidentValue">미분류</strong>
+        </div>
+        <div class="session-metric severity-normal" id="severityMetric">
+          <span>긴급도</span>
+          <strong id="severityValue">보통</strong>
+        </div>
+      </section>
+
+      <main class="call-workspace">
+        <section class="transcript-panel" aria-label="실시간 전사">
+          <header class="panel-header">
+            <div>
+              <h2>실시간 전사</h2>
+              <p id="transcriptMeta">상담 시작 전</p>
+            </div>
+            <button id="clearButton" class="icon-text-button" type="button">
+              초기화
+            </button>
+          </header>
+
+          <div id="transcriptList" class="transcript-list" aria-live="polite">
+            <div class="empty-state">
+              <strong>전사 내용이 없습니다</strong>
+              <span>마이크 전사를 시작하면 표시됩니다.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="recommendation-panel" aria-label="추천 매뉴얼과 법률과 국가 데이터">
+          <header class="panel-header">
+            <div>
+              <h2>추천 매뉴얼/법률/국가 데이터</h2>
+              <p id="recommendationMeta">대화 내용 감지 대기</p>
+            </div>
+            <div class="segmented-filter" role="tablist" aria-label="추천 필터">
+              <button class="filter-button active" type="button" data-filter="all">
+                전체
+              </button>
+              <button class="filter-button" type="button" data-filter="manual">
+                매뉴얼
+              </button>
+              <button class="filter-button" type="button" data-filter="legal">
+                법률
+              </button>
+              <button class="filter-button" type="button" data-filter="country">
+                국가
+              </button>
+            </div>
+          </header>
+
+          <div id="recommendationList" class="recommendation-list">
+            <div class="empty-state">
+              <strong>추천 대기 중</strong>
+              <span>전사 문맥이 쌓이면 매뉴얼, 법률, 국가 데이터 근거가 표시됩니다.</span>
+            </div>
+          </div>
+        </section>
+
+        <aside class="detail-panel" aria-label="상담 보조 패널">
+          <div class="detail-tabs" role="tablist" aria-label="상담 보조 탭">
+            <button class="detail-tab active" type="button" data-tab="detail">
+              근거
+            </button>
+            <button class="detail-tab" type="button" data-tab="checklist">
+              체크
+            </button>
+            <button class="detail-tab" type="button" data-tab="memo">
+              메모
+            </button>
+          </div>
+
+          <section id="detailTab" class="detail-section active">
+            <header class="detail-header">
+              <h2 id="detailTitle">선택된 근거 없음</h2>
+              <p id="detailSource">추천 항목을 선택하면 원문 근거가 표시됩니다.</p>
+            </header>
+            <div id="detailBody" class="detail-body">
+              <p>상담 중 고정하거나 자세히 볼 매뉴얼/법률을 선택하세요.</p>
+            </div>
+          </section>
+
+          <section id="checklistTab" class="detail-section">
+            <header class="detail-header">
+              <h2>확인 체크리스트</h2>
+              <p id="checklistMeta">상담 유형에 따라 자동 갱신</p>
+            </header>
+            <div id="checklistList" class="checklist-list"></div>
+          </section>
+
+          <section id="memoTab" class="detail-section">
+            <header class="detail-header">
+              <h2>상담관 메모</h2>
+              <p>상담 종료 후 요약과 함께 검토할 내용</p>
+            </header>
+            <textarea
+              id="memoField"
+              class="memo-field"
+              rows="12"
+              placeholder="상담관 메모를 입력하세요."
+            ></textarea>
+          </section>
+        </aside>
+      </main>
+
+      <footer class="summary-bar" aria-label="상담 요약">
+        <section class="summary-block">
+          <h2>현재 요약</h2>
+          <p id="summaryText">전사 내용이 쌓이면 상담 요약이 표시됩니다.</p>
+        </section>
+        <section class="summary-block compact">
+          <h2>다음 확인</h2>
+          <p id="nextActionText">신원, 위치, 연락 가능 여부를 우선 확인합니다.</p>
+        </section>
+      </footer>
+    </div>
+
+    <script type="module" src="./call-assist.js"></script>
+  </body>
+</html>

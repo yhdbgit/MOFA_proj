@@ -710,13 +710,15 @@ button {
 }
 
 .missing-information-notice ul,
-.review-note-list ul {
+.review-note-list ul,
+.legal-basis-list ul {
   margin: 6px 0 0;
   padding-left: 18px;
 }
 
 .missing-information-notice li,
-.review-note-list li {
+.review-note-list li,
+.legal-basis-list li {
   margin-top: 3px;
 }
 
@@ -727,6 +729,17 @@ button {
   border-radius: 8px;
   background: var(--blue-soft);
   color: var(--navy);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.legal-basis-list {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #14532d;
   font-size: 11px;
   line-height: 1.5;
 }

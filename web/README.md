@@ -152,3 +152,33 @@ X-Citizen-Id: <citizenId>
 ## 실행
 
 전체 앱 실행 순서는 루트 `README.md`의 실행 방법을 따릅니다.
+
+전화상담 전사 콘솔은 별도 화면입니다.
+
+```bash
+cd web
+npm run dev
+```
+
+```txt
+http://127.0.0.1:4173/call-assist.html
+```
+
+마이크 실시간 전사를 사용하려면 AI agent server도 함께 실행해야 합니다.
+브라우저에는 OpenAI API key를 직접 넣지 않고, AI agent server가 Realtime client secret을 발급합니다.
+
+```bash
+cd backend/services/ai-agent-server
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+`.env`에는 기존 OpenAI API key를 둡니다.
+
+```env
+OPENAI_API_KEY=sk-...
+OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-realtime-whisper
+OPENAI_REALTIME_TRANSCRIPTION_LANGUAGE=ko
+OPENAI_REALTIME_TRANSCRIPTION_DELAY=low
+```
