@@ -3,6 +3,7 @@ import { buildAiAgentUrl } from "./config.js";
 const REALTIME_MODEL = "gpt-realtime-whisper";
 const TARGET_SAMPLE_RATE = 24000;
 const MIC_COMMIT_INTERVAL_MS = 2800;
+const FINAL_TRANSCRIPT_WAIT_MS = 1800;
 
 const recommendationCatalog = [
   {
@@ -279,6 +280,8 @@ const elements = {
   detailBody: document.getElementById("detailBody"),
   checklistMeta: document.getElementById("checklistMeta"),
   checklistList: document.getElementById("checklistList"),
+  consultationSummaryMeta: document.getElementById("consultationSummaryMeta"),
+  consultationSummaryBody: document.getElementById("consultationSummaryBody"),
 };
 
 let realtimeSocket = null;
@@ -302,6 +305,7 @@ let filter = "all";
 let selectedRecommendationId = null;
 let pinnedRecommendationId = null;
 let transcript = [];
+let isGeneratingSummary = false;
 
 function formatElapsed(totalSeconds) {
   const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
@@ -329,12 +333,18 @@ function setControlsBusy(isBusy) {
   elements.startButton.textContent = isBusy
     ? "전사 진행 중"
     : canUseMicrophoneRealtime()
-      ? "마이크 시작"
+      ? "상담 시작"
       : "마이크 미지원";
 }
 
 function showTranscriptMessage(title, description) {
   elements.transcriptList.innerHTML = `<div class="empty-state"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>`;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function canUseMicrophoneRealtime() {
@@ -358,9 +368,29 @@ function stopSession(label = "상담 종료") {
   audioSinceLastCommit = false;
   elements.startButton.disabled = !canUseMicrophoneRealtime();
   elements.stopButton.disabled = true;
-  elements.startButton.textContent = canUseMicrophoneRealtime() ? "마이크 시작" : "마이크 미지원";
+  elements.startButton.textContent = canUseMicrophoneRealtime() ? "상담 시작" : "마이크 미지원";
   setStatus("ready", label);
   elements.transcriptMeta.textContent = `${transcript.length}개 전사 segment`;
+}
+
+async function endSessionWithSummary() {
+  if (isGeneratingSummary) {
+    return;
+  }
+
+  stopRequested = true;
+  elements.stopButton.disabled = true;
+  elements.startButton.disabled = true;
+  setStatus("ready", "상담 종료 처리 중");
+  elements.transcriptMeta.textContent = "마지막 전사 결과 확인 중";
+  commitRealtimeAudio();
+
+  if (realtimeSocket?.readyState === WebSocket.OPEN) {
+    await delay(FINAL_TRANSCRIPT_WAIT_MS);
+  }
+
+  stopSession("상담 종료");
+  await generateConsultationSummary();
 }
 
 function resetSession() {
@@ -387,9 +417,14 @@ function resetSession() {
   elements.recommendationMeta.textContent = "대화 내용 감지 대기";
   elements.summaryText.textContent = "전사 내용이 쌓이면 상담 요약이 표시됩니다.";
   elements.nextActionText.textContent = "신원, 위치, 연락 가능 여부를 우선 확인합니다.";
+  isGeneratingSummary = false;
   elements.startButton.disabled = !canUseMicrophoneRealtime();
   elements.stopButton.disabled = true;
-  elements.startButton.textContent = canUseMicrophoneRealtime() ? "마이크 시작" : "마이크 미지원";
+  elements.startButton.textContent = canUseMicrophoneRealtime() ? "상담 시작" : "마이크 미지원";
+  renderConsultationSummaryPlaceholder(
+    "상담이 종료된 후 출력됩니다.",
+    "상담 요약 대기 중",
+  );
   renderTranscript();
   renderRecommendations([]);
   renderChecklist(checklistByIncident.DEFAULT);
@@ -748,6 +783,165 @@ function renderChecklist(items) {
       return label;
     }),
   );
+}
+
+function activateDetailTab(tabName) {
+  const button = document.querySelector(`.detail-tab[data-tab="${tabName}"]`);
+  const section = document.getElementById(`${tabName}Tab`);
+
+  if (!button || !section) {
+    return;
+  }
+
+  document
+    .querySelectorAll(".detail-tab")
+    .forEach((item) => item.classList.remove("active"));
+  document
+    .querySelectorAll(".detail-section")
+    .forEach((item) => item.classList.remove("active"));
+
+  button.classList.add("active");
+  section.classList.add("active");
+}
+
+function renderConsultationSummaryPlaceholder(title, description) {
+  elements.consultationSummaryMeta.textContent = "상담 종료 후 자동 생성";
+  elements.consultationSummaryBody.innerHTML = `
+    <div class="summary-waiting">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(description)}</span>
+    </div>
+  `;
+}
+
+function renderConsultationSummaryLoading() {
+  elements.consultationSummaryMeta.textContent = "요약 생성 중";
+  elements.consultationSummaryBody.innerHTML = `
+    <div class="summary-waiting">
+      <strong>상담 내용을 정리하고 있습니다.</strong>
+      <span>누적 전사 내용을 6하원칙 기준으로 요약 중입니다.</span>
+    </div>
+  `;
+}
+
+function renderConsultationSummaryError(message) {
+  elements.consultationSummaryMeta.textContent = "요약 생성 실패";
+  elements.consultationSummaryBody.innerHTML = `
+    <div class="summary-waiting">
+      <strong>상담 요약을 생성하지 못했습니다.</strong>
+      <span>${escapeHtml(message || "잠시 후 다시 시도해 주세요.")}</span>
+    </div>
+  `;
+}
+
+function renderConsultationSummary(payload) {
+  const summary = payload?.summary;
+
+  if (!summary) {
+    renderConsultationSummaryError("요약 응답이 비어 있습니다.");
+    return;
+  }
+
+  const principles = [
+    ["누가", summary.who],
+    ["언제", summary.when],
+    ["어디서", summary.where],
+    ["무엇을", summary.what],
+    ["어떻게", summary.how],
+    ["왜", summary.why],
+  ];
+  const nextActions = Array.isArray(summary.nextActions) ? summary.nextActions : [];
+  elements.consultationSummaryMeta.textContent = `${payload.model || "LLM"} · 6하원칙 요약`;
+  elements.consultationSummaryBody.innerHTML = `
+    <div class="six-principle-list">
+      ${principles
+        .map(
+          ([label, value]) => `
+            <section class="six-principle-item">
+              <strong>${escapeHtml(label)}</strong>
+              <p>${escapeHtml(value || "확인 필요")}</p>
+            </section>
+          `,
+        )
+        .join("")}
+    </div>
+    <section class="consultation-result">
+      <strong>상담 결과</strong>
+      ${escapeHtml(summary.consultationResult || "확인 필요")}
+    </section>
+    <ul class="summary-actions">
+      ${nextActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function getSummarySegments() {
+  return transcript
+    .map((item) => ({
+      time: item.time,
+      speaker: item.speaker || "통화 음성",
+      text: String(item.text || "").trim(),
+    }))
+    .filter((item) => item.text);
+}
+
+function getSummaryContext() {
+  return {
+    country: elements.countryValue.textContent,
+    incident: elements.incidentValue.textContent,
+    severity: elements.severityValue.textContent,
+    durationSeconds: elapsedSeconds,
+  };
+}
+
+async function requestConsultationSummary(segments) {
+  const response = await fetch(buildAiAgentUrl("/v1/call-assist/summary"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      segments,
+      context: getSummaryContext(),
+    }),
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const detail = typeof payload?.detail === "string" ? payload.detail : "";
+    throw new Error(detail || `상담 요약 생성 실패 (${response.status})`);
+  }
+
+  return payload;
+}
+
+async function generateConsultationSummary() {
+  const segments = getSummarySegments();
+  activateDetailTab("summary");
+
+  if (segments.length === 0) {
+    renderConsultationSummaryPlaceholder(
+      "요약할 전사 내용이 없습니다.",
+      "마이크 전사 내용이 생성된 뒤 상담을 종료하면 요약본이 표시됩니다.",
+    );
+    return;
+  }
+
+  isGeneratingSummary = true;
+  elements.startButton.disabled = true;
+  elements.stopButton.disabled = true;
+  renderConsultationSummaryLoading();
+
+  try {
+    const payload = await requestConsultationSummary(segments);
+    renderConsultationSummary(payload);
+  } catch (error) {
+    renderConsultationSummaryError(error.message);
+  } finally {
+    isGeneratingSummary = false;
+    elements.startButton.disabled = !canUseMicrophoneRealtime();
+    elements.stopButton.disabled = true;
+  }
 }
 
 function escapeHtml(value) {
@@ -1185,7 +1379,9 @@ function normalizeSpeakerLabel(value) {
 }
 
 elements.startButton.addEventListener("click", () => startSession());
-elements.stopButton.addEventListener("click", () => stopSession());
+elements.stopButton.addEventListener("click", () => {
+  endSessionWithSummary();
+});
 elements.clearButton.addEventListener("click", resetSession);
 
 document.querySelectorAll(".filter-button").forEach((button) => {
@@ -1201,15 +1397,7 @@ document.querySelectorAll(".filter-button").forEach((button) => {
 
 document.querySelectorAll(".detail-tab").forEach((button) => {
   button.addEventListener("click", () => {
-    document
-      .querySelectorAll(".detail-tab")
-      .forEach((item) => item.classList.remove("active"));
-    document
-      .querySelectorAll(".detail-section")
-      .forEach((item) => item.classList.remove("active"));
-
-    button.classList.add("active");
-    document.getElementById(`${button.dataset.tab}Tab`).classList.add("active");
+    activateDetailTab(button.dataset.tab);
   });
 });
 

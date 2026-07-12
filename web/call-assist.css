@@ -531,7 +531,7 @@ button {
 
 .detail-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   border-bottom: 1px solid var(--line-soft);
   background: var(--surface-soft);
 }
@@ -566,7 +566,8 @@ button {
 }
 
 .detail-body,
-.checklist-list {
+.checklist-list,
+.consultation-summary-body {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
@@ -634,6 +635,80 @@ button {
 .memo-field:focus {
   border-color: #8bb7e3;
   box-shadow: 0 0 0 3px rgb(37 99 167 / 12%);
+}
+
+.summary-waiting {
+  display: grid;
+  min-height: 180px;
+  place-content: center;
+  gap: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.summary-waiting strong {
+  color: var(--ink);
+}
+
+.six-principle-list {
+  display: grid;
+  gap: 10px;
+}
+
+.six-principle-item {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.six-principle-item strong {
+  color: var(--blue);
+  font-size: 12px;
+}
+
+.six-principle-item p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.consultation-result {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #eef7ff;
+  color: var(--ink-soft);
+  line-height: 1.55;
+}
+
+.consultation-result strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+
+.summary-actions {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.summary-actions li {
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .summary-bar {

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.agent import router as agent_router
+from app.routes.call_assist import router as call_assist_router
 from app.routes.system import router as system_router
 from app.routes.transcriptions import realtime_router
 
@@ -25,4 +26,5 @@ app.add_middleware(
 
 app.include_router(system_router)
 app.include_router(agent_router)
+app.include_router(call_assist_router)
 app.include_router(realtime_router)

@@ -23,7 +23,7 @@
 
         <div class="session-controls" aria-label="상담 제어">
           <button id="startButton" class="primary-action" type="button" disabled>
-            마이크 시작
+            상담 시작
           </button>
           <button id="stopButton" class="secondary-action" type="button" disabled>
             상담 종료
@@ -115,6 +115,9 @@
             <button class="detail-tab" type="button" data-tab="memo">
               메모
             </button>
+            <button class="detail-tab" type="button" data-tab="summary">
+              상담 요약
+            </button>
           </div>
 
           <section id="detailTab" class="detail-section active">
@@ -146,6 +149,19 @@
               rows="12"
               placeholder="상담관 메모를 입력하세요."
             ></textarea>
+          </section>
+
+          <section id="summaryTab" class="detail-section">
+            <header class="detail-header">
+              <h2>상담 요약</h2>
+              <p id="consultationSummaryMeta">상담 종료 후 자동 생성</p>
+            </header>
+            <div id="consultationSummaryBody" class="consultation-summary-body">
+              <div class="summary-waiting">
+                <strong>상담이 종료된 후 출력됩니다.</strong>
+                <span>상담 요약 대기 중</span>
+              </div>
+            </div>
           </section>
         </aside>
       </main>
