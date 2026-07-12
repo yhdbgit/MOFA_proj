@@ -17,7 +17,7 @@ cd
 
 ## 연결 구조
 
-```txt
+```txtZz
 mobile
   -> Spring Boot main-api :8080
     -> PostgreSQL 저장
