@@ -58,6 +58,7 @@ OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_TIMEOUT_SECONDS = 60.0
 DEBUG_TRUE_VALUES = {"1", "true", "yes", "on"}
+METADATA_KEY_PATTERN = re.compile(r"^[a-zA-Z0-9_]+$")
 
 app = FastAPI(
     title="MOFA AI Agent Server",
@@ -82,6 +83,13 @@ class AnalyzeChatRequest(BaseModel):
 class RagSource(BaseModel):
     title: str
     chunkId: str
+    type: str = ""
+    source: str = ""
+    category: str = ""
+    country: str = ""
+    score: Optional[float] = None
+    preview: str = ""
+    content: str = ""
 
 
 class AnalyzeChatResponse(BaseModel):
@@ -622,7 +630,7 @@ async def call_openai_json(
     return output
 
 
-# 로컬 JSON 청크 로딩. PostgreSQL + pgvector 준비 전까지 사용하는 임시 RAG 소스다.
+# 로컬 JSON 청크 로딩. PostgreSQL RAG가 비어 있거나 로컬 테스트에서 DB를 쓰지 못할 때만 fallback으로 사용한다.
 def load_chunks(relative_path: str) -> list[dict[str, Any]]:
     path = DATA_DIR / relative_path
 
@@ -649,7 +657,6 @@ def country_chunks() -> tuple[dict[str, Any], ...]:
     return tuple(load_chunks("countries/country_chunks.json"))
 
 
-# JSON 기반 임시 Retriever에서만 사용하는 가벼운 키워드 점수 계산.
 def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", value.lower()).strip()
 
@@ -702,6 +709,10 @@ async def classify_scope(request: AnalyzeChatRequest) -> dict[str, Any]:
 
 
 def available_countries() -> list[str]:
+    postgres_countries = available_countries_from_postgres()
+    if postgres_countries:
+        return postgres_countries
+
     return sorted(
         {
             str(chunk.get("metadata", {}).get("country", ""))
@@ -998,7 +1009,199 @@ def to_retrieved_chunk(chunk: dict[str, Any], score: float) -> dict[str, Any]:
     }
 
 
-def search_chunks(
+def to_retrieved_context_from_row(row: Any, score: Optional[float] = None) -> dict[str, Any]:
+    metadata = dict(row[7] or {})
+    return {
+        "chunkId": str(row[0] or ""),
+        "title": str(row[2] or metadata.get("article_title") or metadata.get("manual_title") or "제목 없음"),
+        "documentTitle": str(metadata.get("title", "")),
+        "source": str(row[3] or metadata.get("source", "")),
+        "content": str(row[1] or ""),
+        "documentGroup": str(row[4] or metadata.get("document_group", "")),
+        "category": str(row[5] or metadata.get("category", "")),
+        "country": str(row[6] or metadata.get("country", "")),
+        "documentId": str(metadata.get("document_id", "")),
+        "documentType": str(metadata.get("document_type", "")),
+        "articleNo": str(metadata.get("article_no", "")),
+        "articleTitle": str(metadata.get("article_title", "")),
+        "score": float(score if score is not None else 0),
+    }
+
+
+def context_score(query: str, context: dict[str, Any]) -> float:
+    query_tokens = tokenize(query)
+    context_tokens = tokenize(
+        " ".join(
+            [
+                str(context.get("title", "")),
+                str(context.get("documentTitle", "")),
+                str(context.get("category", "")),
+                str(context.get("content", "")),
+            ]
+        )
+    )
+    overlap_score = float(len(query_tokens & context_tokens))
+    title = str(context.get("title", ""))
+    title_score = 2.0 if title and title in query else 0.0
+    return overlap_score + title_score
+
+
+def rag_source_type(document_group: str) -> str:
+    return {
+        "manuals": "manual",
+        "legal": "legal",
+        "countries": "country",
+    }.get(document_group, document_group or "")
+
+
+def search_postgres_contexts(
+    document_group: str,
+    query: str,
+    *,
+    top_k: int = RETRIEVAL_TOP_K,
+    country: str = "",
+) -> list[dict[str, Any]]:
+    try:
+        from app.rag.config import get_settings
+        from app.rag.embeddings import embed_query
+        from app.rag.repository import search_chunks as search_rag_chunks
+
+        settings = get_settings()
+        query_embedding = embed_query(query, settings.embedding_model)
+        results = search_rag_chunks(
+            query_embedding,
+            document_group,
+            settings,
+            country=country or None,
+            limit=top_k,
+        )
+    except Exception as exception:
+        debug_log(
+            "rag.postgres_search_unavailable",
+            {
+                "document_group": document_group,
+                "country": country,
+                "error": str(exception),
+            },
+        )
+        return []
+
+    return [
+        {
+            "chunkId": result.chunk_id,
+            "title": result.title or result.metadata.get("article_title") or "제목 없음",
+            "documentTitle": str(result.metadata.get("title", "")),
+            "source": result.source,
+            "content": result.content,
+            "documentGroup": result.document_group,
+            "category": result.category or "",
+            "country": result.country or "",
+            "documentId": str(result.metadata.get("document_id", "")),
+            "documentType": str(result.metadata.get("document_type", "")),
+            "articleNo": str(result.metadata.get("article_no", "")),
+            "articleTitle": str(result.metadata.get("article_title", "")),
+            "score": result.score,
+        }
+        for result in results
+    ]
+
+
+def fetch_postgres_contexts(
+    document_group: str,
+    *,
+    country: str = "",
+    categories: Optional[set[str]] = None,
+    metadata_filters: Optional[dict[str, str]] = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    try:
+        from app.rag.config import get_settings
+        from app.rag.db import connect
+
+        settings = get_settings()
+        filters = ["document_group = %(document_group)s"]
+        params: dict[str, Any] = {
+            "document_group": document_group,
+            "limit": limit,
+        }
+
+        if country:
+            filters.append("country = %(country)s")
+            params["country"] = country
+
+        if categories:
+            filters.append("category = ANY(%(categories)s::text[])")
+            params["categories"] = list(categories)
+
+        for index, (key, value) in enumerate((metadata_filters or {}).items()):
+            if not METADATA_KEY_PATTERN.fullmatch(key):
+                continue
+            param_key = f"metadata_value_{index}"
+            filters.append(f"metadata ->> '{key}' = %({param_key})s")
+            params[param_key] = value
+
+        sql = f"""
+        SELECT
+            chunk_key,
+            content,
+            title,
+            source,
+            document_group,
+            category,
+            country,
+            metadata
+        FROM rag_chunks
+        WHERE {" AND ".join(filters)}
+        ORDER BY updated_at DESC, chunk_key ASC
+        LIMIT %(limit)s
+        """
+
+        with connect(settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+    except Exception as exception:
+        debug_log(
+            "rag.postgres_fetch_unavailable",
+            {
+                "document_group": document_group,
+                "country": country,
+                "categories": sorted(categories or []),
+                "metadata_filters": metadata_filters or {},
+                "error": str(exception),
+            },
+        )
+        return []
+
+    return [to_retrieved_context_from_row(row) for row in rows]
+
+
+def available_countries_from_postgres() -> list[str]:
+    try:
+        from app.rag.config import get_settings
+        from app.rag.db import connect
+
+        settings = get_settings()
+        with connect(settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT country
+                    FROM rag_chunks
+                    WHERE document_group = 'countries'
+                      AND country IS NOT NULL
+                      AND country <> ''
+                    """
+                )
+                rows = cursor.fetchall()
+    except Exception as exception:
+        debug_log("rag.postgres_countries_unavailable", {"error": str(exception)})
+        return []
+
+    return sorted({str(row[0]) for row in rows if row[0]}, key=len, reverse=True)
+
+
+def search_local_chunks(
     chunks: tuple[dict[str, Any], ...],
     query: str,
     top_k: int,
@@ -1022,7 +1225,11 @@ def search_chunks(
 
 
 def retrieve_legal(query: str) -> list[dict[str, Any]]:
-    return search_chunks(legal_chunks(), query, RETRIEVAL_TOP_K)
+    postgres_contexts = search_postgres_contexts("legal", query)
+    if postgres_contexts:
+        return postgres_contexts
+
+    return search_local_chunks(legal_chunks(), query, RETRIEVAL_TOP_K)
 
 
 def legal_article_refs_for_incident(incident_type: str) -> list[tuple[str, str]]:
@@ -1047,6 +1254,19 @@ def legal_article_context_by_ref(
     article_no: str,
     query: str,
 ) -> Optional[dict[str, Any]]:
+    postgres_contexts = fetch_postgres_contexts(
+        "legal",
+        metadata_filters={
+            "document_id": document_id,
+            "article_no": article_no,
+        },
+        limit=1,
+    )
+    if postgres_contexts:
+        context = postgres_contexts[0]
+        context["score"] = context_score(query, context) + 8.0
+        return context
+
     for chunk in legal_chunks():
         metadata = chunk.get("metadata", {})
         if metadata.get("document_id") != document_id:
@@ -1113,7 +1333,11 @@ def retrieve_incident_legal_contexts(
 
 
 def retrieve_manual(query: str) -> list[dict[str, Any]]:
-    return search_chunks(manual_chunks(), query, RETRIEVAL_TOP_K)
+    postgres_contexts = search_postgres_contexts("manuals", query)
+    if postgres_contexts:
+        return postgres_contexts
+
+    return search_local_chunks(manual_chunks(), query, RETRIEVAL_TOP_K)
 
 
 def crisis_manual_query(query: str, incident_type: str, user_message: str) -> str:
@@ -1137,13 +1361,20 @@ def retrieve_required_manual_contexts(
         return []
 
     contexts = []
-    for chunk in manual_chunks():
-        metadata = chunk.get("metadata", {})
-        if metadata.get("category") not in categories:
-            continue
+    postgres_contexts = fetch_postgres_contexts("manuals", categories=categories)
+    if postgres_contexts:
+        contexts = postgres_contexts
+        for context in contexts:
+            score = context_score(query, context)
+            context["score"] = score if score > 0 else 1.0
+    else:
+        for chunk in manual_chunks():
+            metadata = chunk.get("metadata", {})
+            if metadata.get("category") not in categories:
+                continue
 
-        score = score_chunk(query, chunk)
-        contexts.append(to_retrieved_chunk(chunk, score if score > 0 else 1.0))
+            score = score_chunk(query, chunk)
+            contexts.append(to_retrieved_chunk(chunk, score if score > 0 else 1.0))
 
     return sorted(
         contexts,
@@ -1179,7 +1410,11 @@ def retrieve_country(query: str, country: str) -> list[dict[str, Any]]:
     if not country:
         return []
 
-    return search_chunks(country_chunks(), query, RETRIEVAL_TOP_K, country=country)
+    postgres_contexts = search_postgres_contexts("countries", query, country=country)
+    if postgres_contexts:
+        return postgres_contexts
+
+    return search_local_chunks(country_chunks(), query, RETRIEVAL_TOP_K, country=country)
 
 
 def travel_safety_country_query(query: str, country: str, user_message: str) -> str:
@@ -1207,12 +1442,18 @@ def retrieve_travel_safety_country_contexts(
     expanded_query = travel_safety_country_query(query, country, user_message)
     ranked_contexts = []
 
-    for chunk in country_chunks():
-        metadata = chunk.get("metadata", {})
-        if metadata.get("country") != country:
-            continue
-        score = score_chunk(expanded_query, chunk)
-        ranked_contexts.append(to_retrieved_chunk(chunk, score))
+    postgres_contexts = fetch_postgres_contexts("countries", country=country)
+    if postgres_contexts:
+        ranked_contexts = postgres_contexts
+        for context in ranked_contexts:
+            context["score"] = context_score(expanded_query, context)
+    else:
+        for chunk in country_chunks():
+            metadata = chunk.get("metadata", {})
+            if metadata.get("country") != country:
+                continue
+            score = score_chunk(expanded_query, chunk)
+            ranked_contexts.append(to_retrieved_chunk(chunk, score))
 
     category_priority = {
         category: index
@@ -1257,18 +1498,33 @@ def retrieve_required_country_contexts(country: str, query: str) -> list[dict[st
         return []
 
     contexts = []
-    for chunk in country_chunks():
-        metadata = chunk.get("metadata", {})
-        if metadata.get("country") != country:
-            continue
-        if metadata.get("category") not in CRISIS_COUNTRY_REQUIRED_CATEGORIES:
-            continue
-        contact_text = f"{chunk_title(metadata)} {chunk.get('content', '')}"
-        if not any(term in contact_text for term in CRISIS_COUNTRY_CONTACT_TERMS):
-            continue
+    postgres_contexts = fetch_postgres_contexts(
+        "countries",
+        country=country,
+        categories=CRISIS_COUNTRY_REQUIRED_CATEGORIES,
+    )
+    if postgres_contexts:
+        for context in postgres_contexts:
+            contact_text = f"{context['title']} {context['content']}"
+            if not any(term in contact_text for term in CRISIS_COUNTRY_CONTACT_TERMS):
+                continue
 
-        score = score_chunk(query, chunk)
-        contexts.append(to_retrieved_chunk(chunk, score if score > 0 else 1.0))
+            score = context_score(query, context)
+            context["score"] = score if score > 0 else 1.0
+            contexts.append(context)
+    else:
+        for chunk in country_chunks():
+            metadata = chunk.get("metadata", {})
+            if metadata.get("country") != country:
+                continue
+            if metadata.get("category") not in CRISIS_COUNTRY_REQUIRED_CATEGORIES:
+                continue
+            contact_text = f"{chunk_title(metadata)} {chunk.get('content', '')}"
+            if not any(term in contact_text for term in CRISIS_COUNTRY_CONTACT_TERMS):
+                continue
+
+            score = score_chunk(query, chunk)
+            contexts.append(to_retrieved_chunk(chunk, score if score > 0 else 1.0))
 
     return sorted(
         contexts,
@@ -1828,12 +2084,25 @@ def build_rag_sources(contexts: list[dict[str, Any]]) -> list[RagSource]:
 
     for context in contexts:
         chunk_id = context["chunkId"]
+        content = str(context.get("content", ""))
 
         if not chunk_id or chunk_id in seen_chunk_ids:
             continue
 
         seen_chunk_ids.add(chunk_id)
-        sources.append(RagSource(title=context["title"], chunkId=chunk_id))
+        sources.append(
+            RagSource(
+                title=context["title"],
+                chunkId=chunk_id,
+                type=rag_source_type(context.get("documentGroup", "")),
+                source=str(context.get("source", "")),
+                category=str(context.get("category", "")),
+                country=str(context.get("country", "")),
+                score=float(context["score"]) if context.get("score") is not None else None,
+                preview=shorten(content, 220),
+                content=content,
+            )
+        )
 
     return sources
 
@@ -1891,7 +2160,15 @@ async def answer_agent(state: dict[str, Any]) -> dict[str, Any]:
             "answer": state["answer"],
             "recommended_actions": state["recommended_actions"],
             "rag_sources": [
-                {"title": source.title, "chunkId": source.chunkId}
+                {
+                    "title": source.title,
+                    "chunkId": source.chunkId,
+                    "type": source.type,
+                    "source": source.source,
+                    "category": source.category,
+                    "country": source.country,
+                    "score": source.score,
+                }
                 for source in state["rag_sources"]
             ],
             "state": state_debug_snapshot(state),

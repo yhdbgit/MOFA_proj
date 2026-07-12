@@ -51,6 +51,8 @@ class SummaryContext(BaseModel):
     incident: Optional[str] = None
     severity: Optional[str] = None
     durationSeconds: Optional[int] = Field(default=None, ge=0)
+    consultationStartedAt: Optional[str] = None
+    consultationStartedAtKst: Optional[str] = None
 
 
 class ConsultationSummaryRequest(BaseModel):
@@ -59,14 +61,11 @@ class ConsultationSummaryRequest(BaseModel):
 
 
 class ConsultationSummary(BaseModel):
-    who: str
-    when: str
-    where: str
-    what: str
-    how: str
-    why: str
-    consultationResult: str
-    nextActions: list[str]
+    citizenInfo: str
+    occurredAt: str
+    country: str
+    incidentType: str
+    report: str
 
 
 class ConsultationSummaryResponse(BaseModel):
@@ -222,11 +221,17 @@ SUMMARY_INSTRUCTIONS = """
 
 규칙:
 - 반드시 한국어로 작성한다.
-- 6하원칙(누가, 언제, 어디서, 무엇을, 어떻게, 왜)에 따라 간결하게 정리한다.
+- 6하원칙(누가, 언제, 어디서, 무엇을, 어떻게, 왜)이 자연스럽게 드러나도록 보고서형 줄글로 정리한다.
+- 누가/언제/어디서/무엇을/어떻게/왜를 항목별로 나누어 쓰지 않는다.
+- citizenInfo, occurredAt, country, incidentType은 화면 상단 정보 영역에 들어갈 짧은 값으로 작성한다.
+- occurredAt은 context.consultationStartedAtKst 값이 있으면 그 값을 그대로 사용한다.
+- report에서 "언제"에 해당하는 내용도 context.consultationStartedAtKst 값을 기준으로 작성한다.
+- report는 상담 보고서처럼 3~6문장 정도의 줄글로 작성한다.
+- report에는 민원인이 어떤 상황에 처했는지, 상담원이 어떤 확인을 했는지, 어떤 안내 또는 조치를 했는지 반드시 포함한다.
+- 상부 보고용 상황보고서 문체로 작성한다.
 - 전사에서 확인되지 않은 정보는 추측하지 말고 "확인 필요"라고 쓴다.
 - 민원인의 신원, 위치, 연락 가능성, 사건 유형, 긴급성, 후속 확인 사항을 우선 반영한다.
 - 법률 판단을 단정하지 말고 상담 기록 정리 관점으로만 작성한다.
-- nextActions는 상담관이 이어서 확인할 항목을 2~5개로 작성한다.
 """.strip()
 
 
@@ -234,50 +239,32 @@ SUMMARY_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        "who": {
+        "citizenInfo": {
             "type": "string",
-            "description": "누가: 민원인 또는 관련자의 식별 가능한 범위",
+            "description": "민원인 정보: 이름, 신분, 피해자 여부 등 확인된 범위. 미확인 시 확인 필요",
         },
-        "when": {
+        "occurredAt": {
             "type": "string",
-            "description": "언제: 사건 발생 시점 또는 상담 시점",
+            "description": "발생 일시: 상담 시작 버튼을 누른 한국 시간. 미확인 시 확인 필요",
         },
-        "where": {
+        "country": {
             "type": "string",
-            "description": "어디서: 국가, 도시, 기관, 현재 위치",
+            "description": "국가: 사건 또는 상담과 관련된 국가",
         },
-        "what": {
+        "incidentType": {
             "type": "string",
-            "description": "무엇을: 민원인이 상담한 핵심 사건 또는 요청",
+            "description": "유형: 체포·구금, 여권 분실, 지갑 도난, 사고·부상 등 상담 유형",
         },
-        "how": {
+        "report": {
             "type": "string",
-            "description": "어떻게: 사건 경위 또는 상담 진행 방식",
-        },
-        "why": {
-            "type": "string",
-            "description": "왜: 상담 요청 사유 또는 조력 필요 사유",
-        },
-        "consultationResult": {
-            "type": "string",
-            "description": "상담 결과 및 현재까지 확인된 사항",
-        },
-        "nextActions": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 2,
-            "maxItems": 5,
-            "description": "상담관의 후속 확인 또는 조치 항목",
+            "description": "6하원칙을 자연스럽게 포함한 보고서형 상담 요약문",
         },
     },
     "required": [
-        "who",
-        "when",
-        "where",
-        "what",
-        "how",
-        "why",
-        "consultationResult",
-        "nextActions",
+        "citizenInfo",
+        "occurredAt",
+        "country",
+        "incidentType",
+        "report",
     ],
 }

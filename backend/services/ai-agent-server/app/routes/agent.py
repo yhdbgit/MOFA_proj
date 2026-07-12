@@ -28,6 +28,13 @@ class OfficialDocumentDraft(BaseModel):
 class RagSource(BaseModel):
     title: str
     chunkId: str
+    type: str = ""
+    source: str = ""
+    category: str = ""
+    country: str = ""
+    score: Optional[float] = None
+    preview: str = ""
+    content: str = ""
 
 
 class AnalyzeChatResponse(BaseModel):
@@ -365,6 +372,13 @@ def build_rag_sources(contexts) -> List[RagSource]:
             RagSource(
                 title=context.title or context.source or context.document_group,
                 chunkId=context.chunk_id,
+                type=rag_source_type(context.document_group),
+                source=context.source,
+                category=context.category or "",
+                country=context.country or "",
+                score=context.score,
+                preview=shorten_context(context.content),
+                content=context.content,
             )
         )
 
@@ -375,8 +389,30 @@ def build_rag_sources(contexts) -> List[RagSource]:
         RagSource(
             title="Mock overseas emergency response guide",
             chunkId="mock-rag-chunk-001",
+            type="manual",
+            source="mock",
+            category="fallback",
+            country="",
+            score=None,
+            preview="RAG 검색 결과가 없을 때 표시되는 mock fallback 근거입니다.",
+            content="RAG 검색 결과가 없을 때 표시되는 mock fallback 근거입니다.",
         )
     ]
+
+
+def rag_source_type(document_group: str) -> str:
+    return {
+        "manuals": "manual",
+        "legal": "legal",
+        "countries": "country",
+    }.get(document_group, document_group or "")
+
+
+def shorten_context(value: str, limit: int = 220) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit].rstrip()}..."
 
 
 def build_mock_citizen_reply(severity: str, contexts=None) -> str:

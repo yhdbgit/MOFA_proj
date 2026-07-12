@@ -11,6 +11,7 @@ from app.main_aiagent import (
     OUT_OF_SCOPE_INCIDENT_TYPE,
     SCOPE_CLASSIFIER_INSTRUCTIONS,
     app,
+    build_rag_sources,
     build_official_document_body,
     crisis_country_query,
     crisis_manual_query,
@@ -428,3 +429,39 @@ def test_unique_contexts_keeps_first_context_for_duplicate_chunk_id():
         "country_nepal:001:01",
     ]
     assert contexts[0]["score"] == 3.0
+
+
+def test_build_rag_sources_exposes_retrieved_chunk_metadata():
+    sources = build_rag_sources(
+        [
+            {
+                "chunkId": "manual:test:001",
+                "title": "도난 피해 대응 매뉴얼",
+                "documentGroup": "manuals",
+                "source": "재외국민보호 매뉴얼",
+                "category": "theft",
+                "country": "",
+                "score": 0.87,
+                "content": "도난 피해 접수 시 현지 경찰 신고와 공관 연락을 안내한다.",
+            },
+            {
+                "chunkId": "manual:test:001",
+                "title": "중복 청크",
+                "documentGroup": "manuals",
+                "source": "",
+                "category": "",
+                "country": "",
+                "score": 0.1,
+                "content": "중복 청크는 제외한다.",
+            },
+        ]
+    )
+
+    assert len(sources) == 1
+    assert sources[0].chunkId == "manual:test:001"
+    assert sources[0].type == "manual"
+    assert sources[0].source == "재외국민보호 매뉴얼"
+    assert sources[0].category == "theft"
+    assert sources[0].score == 0.87
+    assert "현지 경찰 신고" in sources[0].preview
+    assert sources[0].content == "도난 피해 접수 시 현지 경찰 신고와 공관 연락을 안내한다."
