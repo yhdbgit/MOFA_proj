@@ -23,6 +23,7 @@ public class OfficialDocumentController {
 	private static final MediaType DOCX_MEDIA_TYPE = MediaType.parseMediaType(
 			"application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	);
+	private static final MediaType PDF_MEDIA_TYPE = MediaType.APPLICATION_PDF;
 
 	private final OfficialDocumentService officialDocumentService;
 
@@ -65,6 +66,20 @@ public class OfficialDocumentController {
 
 		return ResponseEntity.ok()
 				.contentType(DOCX_MEDIA_TYPE)
+				.header(
+						HttpHeaders.CONTENT_DISPOSITION,
+						ContentDisposition.attachment().filename(filename).build().toString()
+				)
+				.body(body);
+	}
+
+	@GetMapping("/official-documents/{documentId}/pdf")
+	public ResponseEntity<byte[]> downloadPdf(@PathVariable String documentId) {
+		byte[] body = officialDocumentService.generatePdf(documentId);
+		String filename = "official-document-" + documentId + ".pdf";
+
+		return ResponseEntity.ok()
+				.contentType(PDF_MEDIA_TYPE)
 				.header(
 						HttpHeaders.CONTENT_DISPOSITION,
 						ContentDisposition.attachment().filename(filename).build().toString()

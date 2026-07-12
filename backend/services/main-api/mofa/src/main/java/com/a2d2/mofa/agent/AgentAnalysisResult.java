@@ -43,7 +43,14 @@ public record AgentAnalysisResult(
 
 	public record RagSource(
 			String title,
-			String chunkId
+			String chunkId,
+			String type,
+			String source,
+			String category,
+			String country,
+			Double score,
+			String preview,
+			String content
 	) {
 	}
 }

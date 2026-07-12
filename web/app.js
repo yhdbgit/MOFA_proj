@@ -3,11 +3,12 @@ import {
   fetchChatList,
   fetchCitizenProfile,
   openChatEventStream,
+  sendStaffChatMessage,
 } from './chatMonitorApi.js';
 import {
   approveOfficialDocument,
   createOfficialDocumentDraft,
-  downloadOfficialDocumentDocx,
+  downloadOfficialDocumentPdf,
   fetchOfficialDocuments,
   updateOfficialDocument,
 } from './officialDocumentApi.js';
@@ -21,6 +22,9 @@ import {
 
 const elements = {
   activeConversationCount: document.getElementById('activeConversationCount'),
+  assistantPanelContent: document.getElementById('assistantPanelContent'),
+  assistantPanelMeta: document.getElementById('assistantPanelMeta'),
+  assistantStatusBadge: document.getElementById('assistantStatusBadge'),
   chatSubtitle: document.getElementById('chatSubtitle'),
   chatTitle: document.getElementById('chatTitle'),
   connectionBadge: document.getElementById('connectionBadge'),
@@ -41,10 +45,17 @@ const elements = {
   ),
   messageCountBadge: document.getElementById('messageCountBadge'),
   messageList: document.getElementById('messageList'),
+  quoteAssistantReplyButton: document.getElementById('quoteAssistantReplyButton'),
   saveDocumentButton: document.getElementById('saveDocumentButton'),
+  sendStaffMessageButton: document.getElementById('sendStaffMessageButton'),
+  staffReplyInput: document.getElementById('staffReplyInput'),
+  staffReplyStatus: document.getElementById('staffReplyStatus'),
 };
 
 const chatsById = new Map();
+const assistantSuggestionsByChatId = new Map();
+const expandedEvidenceChunkIds = new Set();
+const pendingAssistantChatIds = new Set();
 const pendingChatPayloads = new Map();
 const profilesByCitizenId = new Map();
 const profileRequestsByCitizenId = new Map();
@@ -55,7 +66,16 @@ let copiedCitizenId = null;
 let copyResetTimeoutId = null;
 let expandedIdentityCitizenId = null;
 let eventSource = null;
+let assistantEvidenceFilter = 'all';
 let isDocumentBusy = false;
+let isSendingStaffMessage = false;
+
+const EVIDENCE_FILTERS = [
+  { value: 'all', label: '전체' },
+  { value: 'manual', label: '매뉴얼' },
+  { value: 'legal', label: '법률' },
+  { value: 'country', label: '국가' },
+];
 
 function createEmptyState(icon, title, description) {
   const container = document.createElement('div');
@@ -110,6 +130,15 @@ function getChats() {
 
 function getActiveChat() {
   return activeChatId ? chatsById.get(activeChatId) : null;
+}
+
+function getAssistantSuggestion(chatId) {
+  return chatId ? assistantSuggestionsByChatId.get(chatId) ?? null : null;
+}
+
+function getActiveAssistantSuggestion() {
+  const activeChat = getActiveChat();
+  return activeChat ? getAssistantSuggestion(activeChat.id) : null;
 }
 
 function getDocumentsForChat(chatId) {
@@ -424,7 +453,7 @@ function senderTypeToLabel(senderType) {
     return '담당자';
   }
 
-  return 'AI 상담사';
+  return 'AI 답변';
 }
 
 function createRealtimeMessage(eventPayload) {
@@ -441,12 +470,13 @@ function createRealtimeMessage(eventPayload) {
   };
 }
 
-function upsertRealtimeChatMessage(eventPayload) {
-  const chatId = eventPayload?.chatSessionId;
-  const message = createRealtimeMessage(eventPayload);
-
+function upsertChatMessage(chatId, message, eventPayload = null) {
   if (!chatId || message.text.trim().length === 0) {
     return null;
+  }
+
+  if (message.senderType === 'STAFF') {
+    pendingAssistantChatIds.delete(chatId);
   }
 
   const pendingPayload = pendingChatPayloads.get(chatId)?.payload ?? {};
@@ -470,7 +500,7 @@ function upsertRealtimeChatMessage(eventPayload) {
     createdAt:
       currentChat?.createdAt ??
       pendingChatPayloads.get(chatId)?.occurredAt ??
-      eventPayload.occurredAt ??
+      eventPayload?.occurredAt ??
       new Date().toISOString(),
     messages,
   };
@@ -489,9 +519,120 @@ function upsertRealtimeChatMessage(eventPayload) {
   return nextChat;
 }
 
+function upsertRealtimeChatMessage(eventPayload) {
+  const chatId = eventPayload?.chatSessionId;
+  const message = createRealtimeMessage(eventPayload);
+
+  if (message.senderType === 'CITIZEN') {
+    assistantSuggestionsByChatId.delete(chatId);
+    pendingAssistantChatIds.add(chatId);
+  } else if (message.senderType === 'STAFF') {
+    pendingAssistantChatIds.delete(chatId);
+  }
+
+  return upsertChatMessage(chatId, message, eventPayload);
+}
+
 function shouldShowAnalysisPending(chat) {
   const lastMessage = getLastMessage(chat);
-  return lastMessage?.role === 'user';
+  return (
+    lastMessage?.role === 'user' &&
+    pendingAssistantChatIds.has(chat.id) &&
+    !getAssistantSuggestion(chat.id)
+  );
+}
+
+function normalizeEvidenceType(value) {
+  const type = normalizeText(value).toLowerCase();
+
+  if (['manual', 'manuals', '매뉴얼'].includes(type)) {
+    return 'manual';
+  }
+
+  if (['legal', 'law', '법률'].includes(type)) {
+    return 'legal';
+  }
+
+  if (['country', 'countries', '국가'].includes(type)) {
+    return 'country';
+  }
+
+  return 'unknown';
+}
+
+function evidenceTypeLabel(type) {
+  if (type === 'manual') {
+    return '매뉴얼';
+  }
+
+  if (type === 'legal') {
+    return '법률';
+  }
+
+  if (type === 'country') {
+    return '국가';
+  }
+
+  return '근거';
+}
+
+function normalizeRagSource(source) {
+  const type = normalizeEvidenceType(source?.type ?? source?.documentGroup);
+  const title = normalizeText(source?.title) || '제목 없음';
+  const chunkId = normalizeText(source?.chunkId);
+
+  return {
+    title,
+    chunkId,
+    type,
+    source: normalizeText(source?.source),
+    category: normalizeText(source?.category),
+    country: normalizeText(source?.country),
+    score: Number.isFinite(Number(source?.score)) ? Number(source.score) : null,
+    preview: normalizeText(source?.preview),
+    content: normalizeText(source?.content),
+  };
+}
+
+function normalizeAssistantSuggestion(eventPayload) {
+  const payload = eventPayload?.payload ?? {};
+  const suggestedReply = normalizeText(payload.citizenReply);
+
+  return {
+    chatId: eventPayload?.chatSessionId ?? '',
+    status: normalizeText(payload.status) || 'UNKNOWN',
+    agentRunId: normalizeText(payload.agentRunId),
+    suggestedReply,
+    severity: normalizeText(payload.severity),
+    detectedCountry: normalizeText(payload.detectedCountry),
+    incidentType: normalizeText(payload.incidentType),
+    incidentLabel: normalizeText(payload.incidentLabel),
+    recommendedActions: Array.isArray(payload.recommendedActions)
+      ? payload.recommendedActions.filter((item) => normalizeText(item))
+      : [],
+    ragSources: Array.isArray(payload.ragSources)
+      ? payload.ragSources
+          .map(normalizeRagSource)
+          .filter((source) => source.chunkId || source.title !== '제목 없음')
+      : [],
+    generatedAt:
+      normalizeText(payload.generatedAt) ||
+      normalizeText(eventPayload?.occurredAt) ||
+      new Date().toISOString(),
+    errorMessage: normalizeText(payload.errorMessage),
+  };
+}
+
+function upsertAssistantSuggestion(eventPayload) {
+  const suggestion = normalizeAssistantSuggestion(eventPayload);
+
+  if (!suggestion.chatId) {
+    return null;
+  }
+
+  pendingAssistantChatIds.delete(suggestion.chatId);
+  assistantSuggestionsByChatId.set(suggestion.chatId, suggestion);
+  return suggestion;
 }
 
 async function ensureCitizenProfile(citizenId) {
@@ -691,27 +832,6 @@ function renderMessages() {
     fragment.append(article);
   });
 
-  if (shouldShowAnalysisPending(activeChat)) {
-    const article = document.createElement('article');
-    article.className = 'message assistant pending';
-
-    const sender = document.createElement('div');
-    sender.className = 'message-sender';
-    sender.textContent = 'AI 상담사';
-
-    const bubble = document.createElement('div');
-    bubble.className = 'message-bubble';
-    bubble.textContent = 'AI 분석 중...';
-
-    const time = document.createElement('time');
-    time.className = 'message-time';
-    time.dateTime = new Date().toISOString();
-    time.textContent = '응답 대기 중';
-
-    article.append(sender, bubble, time);
-    fragment.append(article);
-  }
-
   elements.messageList.append(fragment);
   elements.messageList.scrollTop = elements.messageList.scrollHeight;
 }
@@ -877,7 +997,7 @@ function renderDocumentPanel() {
     if (!elements.documentStatusText.textContent) {
       setDocumentStatus(
         activeDocument.status === 'APPROVED'
-          ? '승인 완료. DOCX 다운로드가 가능합니다.'
+          ? '승인 완료. PDF 다운로드가 가능합니다.'
           : '공문 초안을 검토한 뒤 임시 저장 또는 승인할 수 있습니다.',
       );
     }
@@ -900,11 +1020,291 @@ function renderDocumentPanel() {
   }
 }
 
+function setStaffReplyStatus(message, type = '') {
+  elements.staffReplyStatus.textContent = message;
+  elements.staffReplyStatus.className = `staff-reply-status${type ? ` ${type}` : ''}`;
+}
+
+function renderComposer() {
+  const activeChat = getActiveChat();
+  const hasDraft = elements.staffReplyInput.value.trim().length > 0;
+
+  elements.staffReplyInput.disabled = !activeChat || isSendingStaffMessage;
+  elements.sendStaffMessageButton.disabled =
+    !activeChat || !hasDraft || isSendingStaffMessage;
+  elements.sendStaffMessageButton.textContent = isSendingStaffMessage
+    ? '전송 중'
+    : '전송';
+}
+
+function createAssistantEmptyState(title, description) {
+  const empty = document.createElement('div');
+  empty.className = 'assistant-empty';
+
+  const heading = document.createElement('h3');
+  heading.textContent = title;
+
+  const text = document.createElement('p');
+  text.textContent = description;
+
+  empty.append(heading, text);
+  return empty;
+}
+
+function createAssistantToken(label, value) {
+  const token = document.createElement('span');
+  token.className = 'assistant-token';
+  token.textContent = value ? `${label} ${value}` : label;
+  return token;
+}
+
+function formatEvidenceScore(score) {
+  if (!Number.isFinite(score)) {
+    return '';
+  }
+
+  if (score >= 0 && score <= 1) {
+    return `유사도 ${Math.round(score * 100)}%`;
+  }
+
+  return `점수 ${score.toFixed(2)}`;
+}
+
+function evidenceSourceKey(source) {
+  return source.chunkId || `${source.type}:${source.title}`;
+}
+
+function renderEvidenceFilterButton(filter, sources) {
+  const count = filter.value === 'all'
+    ? sources.length
+    : sources.filter((source) => source.type === filter.value).length;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `assistant-evidence-filter-button${
+    assistantEvidenceFilter === filter.value ? ' active' : ''
+  }`;
+  button.textContent = `${filter.label} ${count}`;
+  button.disabled = count === 0 && filter.value !== 'all';
+  button.addEventListener('click', () => {
+    assistantEvidenceFilter = filter.value;
+    renderAssistantPanel();
+  });
+  return button;
+}
+
+function renderEvidenceCard(source) {
+  const sourceKey = evidenceSourceKey(source);
+  const isExpanded = expandedEvidenceChunkIds.has(sourceKey);
+  const fullText = source.content || source.preview;
+  const previewText = source.preview || source.content;
+  const hasExpandableText = Boolean(fullText && previewText && fullText !== previewText);
+  const item = document.createElement('article');
+  item.className = `assistant-evidence-card${isExpanded ? ' expanded' : ''}`;
+
+  const top = document.createElement('div');
+  top.className = 'assistant-evidence-card-top';
+
+  const header = document.createElement('div');
+  header.className = 'assistant-evidence-head';
+
+  const badge = document.createElement('span');
+  badge.className = `assistant-evidence-type ${source.type}`;
+  badge.textContent = evidenceTypeLabel(source.type);
+
+  const title = document.createElement('h4');
+  title.className = 'assistant-evidence-title';
+  title.textContent = source.title;
+
+  header.append(badge, title);
+
+  const toggleButton = document.createElement('button');
+  toggleButton.type = 'button';
+  toggleButton.className = 'assistant-evidence-toggle';
+  toggleButton.textContent = isExpanded ? '⌃' : '⌄';
+  toggleButton.hidden = !hasExpandableText;
+  toggleButton.title = isExpanded ? '접기' : '펼치기';
+  toggleButton.setAttribute('aria-label', isExpanded ? '근거 자료 접기' : '근거 자료 펼치기');
+  toggleButton.setAttribute('aria-expanded', String(isExpanded));
+  toggleButton.addEventListener('click', () => {
+    if (isExpanded) {
+      expandedEvidenceChunkIds.delete(sourceKey);
+    } else {
+      expandedEvidenceChunkIds.add(sourceKey);
+    }
+    renderAssistantPanel();
+  });
+
+  top.append(header, toggleButton);
+
+  const metaValues = [
+    source.source,
+    source.category,
+    source.country,
+    formatEvidenceScore(source.score),
+  ].filter(Boolean);
+
+  const meta = document.createElement('p');
+  meta.className = 'assistant-evidence-meta';
+  meta.textContent = metaValues.length > 0 ? metaValues.join(' · ') : '메타데이터 없음';
+
+  item.append(top, meta);
+
+  if (previewText) {
+    const preview = document.createElement('p');
+    preview.className = `assistant-evidence-preview${isExpanded ? ' expanded' : ''}`;
+    preview.textContent = isExpanded ? fullText : previewText;
+    item.append(preview);
+  }
+
+  if (source.chunkId) {
+    const chunk = document.createElement('code');
+    chunk.className = 'assistant-evidence-chunk';
+    chunk.textContent = source.chunkId;
+    item.append(chunk);
+  }
+
+  return item;
+}
+
+function renderEvidenceSources(sources) {
+  const section = document.createElement('section');
+  section.className = 'assistant-evidence';
+
+  const header = document.createElement('div');
+  header.className = 'assistant-evidence-header';
+
+  const titleRow = document.createElement('div');
+  titleRow.className = 'assistant-evidence-title-row';
+
+  const title = document.createElement('h3');
+  title.textContent = '근거 자료';
+
+  const count = document.createElement('span');
+  count.textContent = `${sources.length}개 청크`;
+
+  titleRow.append(title, count);
+
+  const filters = document.createElement('div');
+  filters.className = 'assistant-evidence-filter';
+  EVIDENCE_FILTERS.forEach((filter) => {
+    filters.append(renderEvidenceFilterButton(filter, sources));
+  });
+
+  header.append(titleRow, filters);
+  section.append(header);
+
+  const filteredSources = assistantEvidenceFilter === 'all'
+    ? sources
+    : sources.filter((source) => source.type === assistantEvidenceFilter);
+
+  if (filteredSources.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'assistant-evidence-empty';
+    empty.textContent = sources.length === 0
+      ? '검색된 근거 청크가 없습니다.'
+      : '선택한 유형의 근거 청크가 없습니다.';
+    section.append(empty);
+    return section;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'assistant-evidence-list';
+  filteredSources.forEach((source) => {
+    list.append(renderEvidenceCard(source));
+  });
+  section.append(list);
+  return section;
+}
+
+function renderAssistantPanel() {
+  const activeChat = getActiveChat();
+  const suggestion = getActiveAssistantSuggestion();
+  const isPending = activeChat ? shouldShowAnalysisPending(activeChat) : false;
+  const canQuote = Boolean(suggestion?.suggestedReply);
+
+  elements.assistantPanelContent.replaceChildren();
+  elements.quoteAssistantReplyButton.disabled = !canQuote;
+
+  if (!activeChat) {
+    elements.assistantPanelMeta.textContent = '상담 선택 대기';
+    elements.assistantStatusBadge.className = 'assistant-status-badge idle';
+    elements.assistantStatusBadge.textContent = '대기';
+    elements.assistantPanelContent.append(
+      createAssistantEmptyState('상담 없음', '왼쪽 목록에서 상담을 선택하세요.'),
+    );
+    return;
+  }
+
+  elements.assistantPanelMeta.textContent = formatChatTitle(activeChat);
+
+  if (isPending) {
+    elements.assistantStatusBadge.className = 'assistant-status-badge pending';
+    elements.assistantStatusBadge.textContent = '생성 중';
+    elements.assistantPanelContent.append(
+      createAssistantEmptyState('답변 생성 중', '상담사 검토용 답변을 준비하고 있습니다.'),
+    );
+    return;
+  }
+
+  if (!suggestion) {
+    elements.assistantStatusBadge.className = 'assistant-status-badge idle';
+    elements.assistantStatusBadge.textContent = '대기';
+    elements.assistantPanelContent.append(
+      createAssistantEmptyState('답변 없음', '새 민원인 메시지가 들어오면 표시됩니다.'),
+    );
+    return;
+  }
+
+  if (!suggestion.suggestedReply) {
+    elements.assistantStatusBadge.className = 'assistant-status-badge error';
+    elements.assistantStatusBadge.textContent = '확인 필요';
+    elements.assistantPanelContent.append(
+      createAssistantEmptyState(
+        '생성 실패',
+        suggestion.errorMessage || '답변 후보를 생성하지 못했습니다.',
+      ),
+    );
+    return;
+  }
+
+  elements.assistantStatusBadge.className = 'assistant-status-badge ready';
+  elements.assistantStatusBadge.textContent = '준비됨';
+
+  const suggestionArticle = document.createElement('article');
+  suggestionArticle.className = 'assistant-suggestion';
+
+  const meta = document.createElement('div');
+  meta.className = 'assistant-suggestion-meta';
+  [
+    createAssistantToken('긴급도', suggestion.severity || '미분류'),
+    createAssistantToken('국가', suggestion.detectedCountry || resolveCountryName(activeChat)),
+    createAssistantToken('유형', suggestion.incidentLabel || resolveIncidentLabel(activeChat)),
+  ].forEach((token) => meta.append(token));
+
+  const body = document.createElement('p');
+  body.className = 'assistant-suggestion-body';
+  body.textContent = suggestion.suggestedReply;
+
+  const generatedAt = document.createElement('time');
+  generatedAt.className = 'assistant-generated-time';
+  generatedAt.dateTime = suggestion.generatedAt;
+  generatedAt.textContent = `${formatRelativeTime(suggestion.generatedAt)} 생성`;
+
+  suggestionArticle.append(meta, body, generatedAt);
+
+  elements.assistantPanelContent.append(
+    suggestionArticle,
+    renderEvidenceSources(suggestion.ragSources),
+  );
+}
+
 function render() {
   renderHeader();
   renderConversationList();
   renderMessages();
   renderDocumentPanel();
+  renderAssistantPanel();
+  renderComposer();
 }
 
 function parseEventChatId(eventData) {
@@ -995,7 +1395,7 @@ async function handleDocumentEvent(event) {
   if (event.name === 'OFFICIAL_DOCUMENT_DRAFTED') {
     setDocumentStatus('AI Agent가 공문 초안을 생성했습니다.', 'success');
   } else if (event.name === 'OFFICIAL_DOCUMENT_APPROVED') {
-    setDocumentStatus('공문이 승인되었습니다. DOCX 다운로드가 가능합니다.', 'success');
+    setDocumentStatus('공문이 승인되었습니다. PDF 다운로드가 가능합니다.', 'success');
   } else {
     setDocumentStatus('공문 수정사항이 저장되었습니다.', 'success');
   }
@@ -1045,6 +1445,9 @@ async function handleRealtimeEvent(event) {
   }
 
   if (event.name === 'AGENT_RESULT_READY') {
+    upsertAssistantSuggestion(eventPayload);
+    render();
+    setConnectionStatus('online');
     void refreshChatAfterCommit(chatId, { includeDocuments: true });
     return;
   }
@@ -1096,7 +1499,65 @@ function connectEventStream() {
   });
 }
 
+function quoteActiveAssistantReply() {
+  const suggestion = getActiveAssistantSuggestion();
+
+  if (!suggestion?.suggestedReply) {
+    return;
+  }
+
+  elements.staffReplyInput.value = suggestion.suggestedReply;
+  setStaffReplyStatus('답변 후보를 입력창에 복사했습니다.', 'success');
+  renderComposer();
+  elements.staffReplyInput.focus();
+}
+
+async function handleStaffMessageSubmit() {
+  const activeChat = getActiveChat();
+  const content = elements.staffReplyInput.value.trim();
+
+  if (!activeChat || !content || isSendingStaffMessage) {
+    return;
+  }
+
+  isSendingStaffMessage = true;
+  setStaffReplyStatus('');
+  renderComposer();
+
+  try {
+    const message = await sendStaffChatMessage(activeChat.id, content);
+    upsertChatMessage(activeChat.id, message);
+    elements.staffReplyInput.value = '';
+    setStaffReplyStatus('담당자 답변을 전송했습니다.', 'success');
+    setConnectionStatus('online');
+  } catch (error) {
+    setStaffReplyStatus(error.message, 'error');
+    setConnectionStatus('offline');
+  } finally {
+    isSendingStaffMessage = false;
+    render();
+  }
+}
+
 elements.closeDocumentPanelButton.addEventListener('click', closeDocumentPanel);
+elements.quoteAssistantReplyButton.addEventListener('click', quoteActiveAssistantReply);
+elements.sendStaffMessageButton.addEventListener('click', () => {
+  void handleStaffMessageSubmit();
+});
+elements.staffReplyInput.addEventListener('input', () => {
+  if (elements.staffReplyStatus.classList.contains('error')) {
+    setStaffReplyStatus('');
+  }
+  renderComposer();
+});
+elements.staffReplyInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+    return;
+  }
+
+  event.preventDefault();
+  void handleStaffMessageSubmit();
+});
 
 elements.generateDocumentButton.addEventListener('click', async () => {
   const activeChat = getActiveChat();
@@ -1111,7 +1572,7 @@ elements.generateDocumentButton.addEventListener('click', async () => {
   } else {
     setDocumentStatus(
       activeDocument.status === 'APPROVED'
-        ? '승인 완료. DOCX 다운로드가 가능합니다.'
+        ? '승인 완료. PDF 다운로드가 가능합니다.'
         : '공문 초안을 검토한 뒤 임시 저장 또는 승인할 수 있습니다.',
     );
   }
@@ -1178,7 +1639,7 @@ elements.approveDocumentButton.addEventListener('click', async () => {
     const reviewedDocument = await updateOfficialDocument(activeDocument.id, draft);
     const approvedDocument = await approveOfficialDocument(reviewedDocument.id);
     upsertDocument(approvedDocument);
-    setDocumentStatus('승인 완료. DOCX 다운로드가 가능합니다.', 'success');
+    setDocumentStatus('승인 완료. PDF 다운로드가 가능합니다.', 'success');
   } catch (error) {
     setDocumentStatus(error.message, 'error');
   } finally {
@@ -1196,8 +1657,8 @@ elements.downloadDocumentButton.addEventListener('click', async () => {
   try {
     isDocumentBusy = true;
     renderDocumentControls();
-    await downloadOfficialDocumentDocx(activeDocument);
-    setDocumentStatus('DOCX 다운로드를 시작했습니다.', 'success');
+    await downloadOfficialDocumentPdf(activeDocument);
+    setDocumentStatus('PDF 다운로드를 시작했습니다.', 'success');
   } catch (error) {
     setDocumentStatus(error.message, 'error');
   } finally {

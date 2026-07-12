@@ -32,6 +32,7 @@ class OfficialDocumentServiceTests {
 				mock(CitizenProfileService.class),
 				mock(NotificationEventPublisher.class),
 				mock(OfficialDocumentDocxGenerator.class),
+				mock(OfficialDocumentPdfGenerator.class),
 				officialDocumentRepository
 		);
 		ChatSessionEntity chatSession = new ChatSessionEntity("citizen-test-1", "JP", "OPEN", Instant.now());
@@ -56,9 +57,10 @@ class OfficialDocumentServiceTests {
 	}
 
 	@Test
-	void rejectsDocxDownloadUntilDocumentIsApproved() {
+	void rejectsDocumentDownloadsUntilDocumentIsApproved() {
 		OfficialDocumentRepository officialDocumentRepository = mock(OfficialDocumentRepository.class);
 		OfficialDocumentDocxGenerator docxGenerator = mock(OfficialDocumentDocxGenerator.class);
+		OfficialDocumentPdfGenerator pdfGenerator = mock(OfficialDocumentPdfGenerator.class);
 		OfficialDocumentService service = new OfficialDocumentService(
 				mock(AgentClient.class),
 				mock(ChatMessageRepository.class),
@@ -66,6 +68,7 @@ class OfficialDocumentServiceTests {
 				mock(CitizenProfileService.class),
 				mock(NotificationEventPublisher.class),
 				docxGenerator,
+				pdfGenerator,
 				officialDocumentRepository
 		);
 		OfficialDocumentEntity draft = new OfficialDocumentEntity(
@@ -83,12 +86,16 @@ class OfficialDocumentServiceTests {
 		assertThatThrownBy(() -> service.generateDocx(draft.getId()))
 				.isInstanceOf(DocumentNotApprovedException.class);
 		verify(docxGenerator, never()).generate(draft);
+		assertThatThrownBy(() -> service.generatePdf(draft.getId()))
+				.isInstanceOf(DocumentNotApprovedException.class);
+		verify(pdfGenerator, never()).generate(draft);
 	}
 
 	@Test
-	void approvedDocumentCanBeDownloadedAsDocx() {
+	void approvedDocumentCanBeDownloadedAsDocxAndPdf() {
 		OfficialDocumentRepository officialDocumentRepository = mock(OfficialDocumentRepository.class);
 		OfficialDocumentDocxGenerator docxGenerator = mock(OfficialDocumentDocxGenerator.class);
+		OfficialDocumentPdfGenerator pdfGenerator = mock(OfficialDocumentPdfGenerator.class);
 		OfficialDocumentService service = new OfficialDocumentService(
 				mock(AgentClient.class),
 				mock(ChatMessageRepository.class),
@@ -96,6 +103,7 @@ class OfficialDocumentServiceTests {
 				mock(CitizenProfileService.class),
 				mock(NotificationEventPublisher.class),
 				docxGenerator,
+				pdfGenerator,
 				officialDocumentRepository
 		);
 		OfficialDocumentEntity document = new OfficialDocumentEntity(
@@ -111,8 +119,11 @@ class OfficialDocumentServiceTests {
 		document.approve(Instant.now());
 		when(officialDocumentRepository.findById(document.getId())).thenReturn(Optional.of(document));
 		when(docxGenerator.generate(document)).thenReturn(new byte[] {1, 2, 3});
+		when(pdfGenerator.generate(document)).thenReturn(new byte[] {4, 5, 6});
 
 		assertThat(service.generateDocx(document.getId())).containsExactly(1, 2, 3);
 		verify(docxGenerator).generate(document);
+		assertThat(service.generatePdf(document.getId())).containsExactly(4, 5, 6);
+		verify(pdfGenerator).generate(document);
 	}
 }

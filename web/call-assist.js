@@ -306,11 +306,38 @@ let selectedRecommendationId = null;
 let pinnedRecommendationId = null;
 let transcript = [];
 let isGeneratingSummary = false;
+let sessionStartedAt = null;
 
 function formatElapsed(totalSeconds) {
   const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
   const seconds = String(totalSeconds % 60).padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+function formatKoreanDateTime(value) {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "확인 필요";
+  }
+
+  const parts = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const valueByType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return `${valueByType.year}-${valueByType.month}-${valueByType.day} ${valueByType.hour}:${valueByType.minute} KST`;
+}
+
+function getSessionStartedLabel() {
+  return sessionStartedAt ? formatKoreanDateTime(sessionStartedAt) : "확인 필요";
 }
 
 function setStatus(status, label) {
@@ -397,6 +424,7 @@ function resetSession() {
   stopSession("대기 중");
   setStatus("idle", "대기 중");
   stopRequested = false;
+  sessionStartedAt = null;
   elapsedSeconds = 0;
   isTranscribing = false;
   realtimeReady = false;
@@ -819,7 +847,7 @@ function renderConsultationSummaryLoading() {
   elements.consultationSummaryBody.innerHTML = `
     <div class="summary-waiting">
       <strong>상담 내용을 정리하고 있습니다.</strong>
-      <span>누적 전사 내용을 6하원칙 기준으로 요약 중입니다.</span>
+      <span>상담 내용을 보고서 형식으로 정리 중입니다.</span>
     </div>
   `;
 }
@@ -842,37 +870,43 @@ function renderConsultationSummary(payload) {
     return;
   }
 
-  const principles = [
-    ["누가", summary.who],
-    ["언제", summary.when],
-    ["어디서", summary.where],
-    ["무엇을", summary.what],
-    ["어떻게", summary.how],
-    ["왜", summary.why],
+  const summaryInfo = [
+    ["민원인 정보", summary.citizenInfo || summary.who],
+    ["발생 일시", getSessionStartedLabel()],
+    ["국가", summary.country || summary.where],
+    ["유형", summary.incidentType || elements.incidentValue.textContent],
   ];
-  const nextActions = Array.isArray(summary.nextActions) ? summary.nextActions : [];
-  elements.consultationSummaryMeta.textContent = `${payload.model || "LLM"} · 6하원칙 요약`;
+  const reportText = summary.report || buildLegacySummaryReport(summary);
+  elements.consultationSummaryMeta.textContent = "상담 종료 후 생성된 정리본";
   elements.consultationSummaryBody.innerHTML = `
-    <div class="six-principle-list">
-      ${principles
+    <div class="summary-info-grid">
+      ${summaryInfo
         .map(
           ([label, value]) => `
-            <section class="six-principle-item">
+            <span class="summary-info-item">
               <strong>${escapeHtml(label)}</strong>
-              <p>${escapeHtml(value || "확인 필요")}</p>
-            </section>
+              <em>${escapeHtml(value || "확인 필요")}</em>
+            </span>
           `,
         )
         .join("")}
     </div>
-    <section class="consultation-result">
-      <strong>상담 결과</strong>
-      ${escapeHtml(summary.consultationResult || "확인 필요")}
+    <section class="summary-report">
+      <p>${escapeHtml(reportText || "확인 필요")}</p>
     </section>
-    <ul class="summary-actions">
-      ${nextActions.map((action) => `<li>${escapeHtml(action)}</li>`).join("")}
-    </ul>
   `;
+}
+
+function buildLegacySummaryReport(summary) {
+  const who = summary.who || "민원인 정보 확인 필요";
+  const when = summary.when || "발생 일시 확인 필요";
+  const where = summary.where || "장소 확인 필요";
+  const what = summary.what || "상담 유형 확인 필요";
+  const how = summary.how || "경위 확인 필요";
+  const why = summary.why || "상담 요청 사유 확인 필요";
+  const result = summary.consultationResult || "상담 결과 확인 필요";
+
+  return `${who}은 ${when} ${where}에서 ${what} 관련 상담을 요청했습니다. 사건 경위는 ${how}로 정리되며, 상담 요청 사유는 ${why}입니다. 현재까지의 상담 결과는 ${result}`;
 }
 
 function getSummarySegments() {
@@ -891,6 +925,8 @@ function getSummaryContext() {
     incident: elements.incidentValue.textContent,
     severity: elements.severityValue.textContent,
     durationSeconds: elapsedSeconds,
+    consultationStartedAt: sessionStartedAt?.toISOString() || null,
+    consultationStartedAtKst: getSessionStartedLabel(),
   };
 }
 
@@ -963,6 +999,7 @@ async function startMicrophoneRealtime() {
   }
 
   resetSession();
+  sessionStartedAt = new Date();
   setControlsBusy(true);
   stopRequested = false;
   setStatus("recording", "Realtime 세션 연결 중");

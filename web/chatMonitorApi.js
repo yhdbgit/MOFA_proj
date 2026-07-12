@@ -4,9 +4,14 @@ const CHAT_LIST_URL = buildBackendUrl('/api/chats');
 const EVENT_STREAM_URL = buildBackendUrl('/api/events/stream');
 const CITIZEN_PROFILE_URL = buildBackendUrl('/api/citizen-profile');
 
-async function requestJson(url, fallbackMessage) {
+async function requestJson(url, fallbackMessage, options = {}) {
   const response = await fetch(url, {
     cache: 'no-store',
+    ...options,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...options.headers,
+    },
   });
 
   const payload = await response.json().catch(() => null);
@@ -39,7 +44,7 @@ function toSenderLabel(senderType) {
     return '담당자';
   }
 
-  return 'AI 상담사';
+  return 'AI 답변';
 }
 
 function normalizeMessage(message) {
@@ -59,6 +64,7 @@ export function normalizeChat(chat) {
         .filter(
           (message) =>
             typeof message?.id === 'string' &&
+            message.senderType !== 'AGENT' &&
             typeof message?.content === 'string' &&
             message.content.trim().length > 0,
         )
@@ -117,6 +123,26 @@ export async function fetchCitizenProfile(citizenId) {
   }
 
   return payload;
+}
+
+export async function sendStaffChatMessage(chatId, content) {
+  const payload = await requestJson(
+    buildBackendUrl(`/api/chats/${chatId}/messages`),
+    '담당자 메시지 전송 실패',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        senderType: 'STAFF',
+        content,
+      }),
+    },
+  );
+
+  if (!payload?.message) {
+    throw new Error('담당자 메시지 응답 형식이 올바르지 않습니다.');
+  }
+
+  return normalizeMessage(payload.message);
 }
 
 export function openChatEventStream({ onEvent, onOpen, onError }) {

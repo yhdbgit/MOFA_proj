@@ -1,5 +1,5 @@
 /**
- * AI 상담 화면과 Spring Boot backend 사이의 HTTP 통신을 담당한다.
+ * 상담 접수 화면과 Spring Boot backend 사이의 HTTP 통신을 담당한다.
  *
  * API CONTRACT:
  * - POST /api/chats
@@ -107,11 +107,44 @@ export async function createConsularChatSession() {
   return payload;
 }
 
+function toMobileRole(senderType) {
+  return senderType === 'CITIZEN' ? 'user' : 'assistant';
+}
+
+function normalizeBackendMessage(message) {
+  return {
+    id: message.id,
+    role: toMobileRole(message.senderType),
+    text: message.content,
+    createdAt: message.createdAt,
+  };
+}
+
+export async function fetchConsularChatSession(chatId) {
+  const payload = await requestJson(`/api/chats/${chatId}`);
+  const messages = Array.isArray(payload.messages)
+    ? payload.messages
+        .filter(
+          (message) =>
+            typeof message?.id === 'string' &&
+            message.senderType !== 'AGENT' &&
+            typeof message?.content === 'string' &&
+            message.content.trim().length > 0,
+        )
+        .map(normalizeBackendMessage)
+    : [];
+
+  return {
+    ...payload,
+    messages,
+  };
+}
+
 /**
- * 사용자의 메시지를 Spring Boot backend에 저장하고 agent 답변 문자열을 반환한다.
+ * 사용자의 메시지를 Spring Boot backend에 저장하고 답변 어시스턴트 분석 결과를 반환한다.
  *
  * @param {{ chatId?: string | null, text: string }} params
- * @returns {Promise<{ chatId: string, reply: string, agentResult: object | null }>}
+ * @returns {Promise<{ chatId: string, agentResult: object | null }>}
  */
 export async function sendConsularChatMessage({ chatId, text }) {
   const activeChat =
@@ -128,18 +161,9 @@ export async function sendConsularChatMessage({ chatId, text }) {
   });
 
   const agentResult = payload.agentResult ?? null;
-  const reply = agentResult?.citizenReply;
-
-  if (typeof reply !== 'string' || reply.trim().length === 0) {
-    throw new Error(
-      agentResult?.errorMessage ??
-        '상담 서버에서 답변을 받지 못했습니다.',
-    );
-  }
 
   return {
     chatId: activeChat.id,
-    reply: reply.trim(),
     agentResult,
   };
 }

@@ -26,6 +26,7 @@ public class OfficialDocumentService {
 	private final CitizenProfileService citizenProfileService;
 	private final NotificationEventPublisher eventPublisher;
 	private final OfficialDocumentDocxGenerator docxGenerator;
+	private final OfficialDocumentPdfGenerator pdfGenerator;
 	private final OfficialDocumentRepository officialDocumentRepository;
 
 	public OfficialDocumentService(
@@ -35,6 +36,7 @@ public class OfficialDocumentService {
 			CitizenProfileService citizenProfileService,
 			NotificationEventPublisher eventPublisher,
 			OfficialDocumentDocxGenerator docxGenerator,
+			OfficialDocumentPdfGenerator pdfGenerator,
 			OfficialDocumentRepository officialDocumentRepository
 	) {
 		this.agentClient = agentClient;
@@ -43,6 +45,7 @@ public class OfficialDocumentService {
 		this.citizenProfileService = citizenProfileService;
 		this.eventPublisher = eventPublisher;
 		this.docxGenerator = docxGenerator;
+		this.pdfGenerator = pdfGenerator;
 		this.officialDocumentRepository = officialDocumentRepository;
 	}
 
@@ -69,6 +72,7 @@ public class OfficialDocumentService {
 		List<AgentClient.ConversationMessage> conversationHistory = chatMessageRepository
 				.findByChatSessionIdOrderByCreatedAtAsc(chatSession.getId())
 				.stream()
+				.filter(message -> !"AGENT".equals(message.getSenderType()))
 				.map(message -> new AgentClient.ConversationMessage(message.getSenderType(), message.getContent()))
 				.toList();
 
@@ -152,6 +156,15 @@ public class OfficialDocumentService {
 			throw new DocumentNotApprovedException(documentId);
 		}
 		return docxGenerator.generate(document);
+	}
+
+	@Transactional(readOnly = true)
+	public byte[] generatePdf(String documentId) {
+		OfficialDocumentEntity document = findDocument(documentId);
+		if (!"APPROVED".equals(document.getStatus())) {
+			throw new DocumentNotApprovedException(documentId);
+		}
+		return pdfGenerator.generate(document);
 	}
 
 	private ChatSessionEntity findChat(String chatId) {

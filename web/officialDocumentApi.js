@@ -101,13 +101,13 @@ export async function approveOfficialDocument(documentId) {
   );
 }
 
-function createDocxFilename(document) {
+function createDownloadFilename(document, extension) {
   const safeTitle = String(document?.title || '공문')
     .replace(/[\\/:*?"<>|]/g, '')
     .trim()
     .slice(0, 60);
 
-  return `${safeTitle || '공문'}.docx`;
+  return `${safeTitle || '공문'}.${extension}`;
 }
 
 export async function downloadOfficialDocumentDocx(officialDocument) {
@@ -131,7 +131,35 @@ export async function downloadOfficialDocumentDocx(officialDocument) {
   const downloadUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = downloadUrl;
-  link.download = createDocxFilename(officialDocument);
+  link.download = createDownloadFilename(officialDocument, 'docx');
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+}
+
+export async function downloadOfficialDocumentPdf(officialDocument) {
+  const response = await requestWithTimeout(
+    `/api/official-documents/${officialDocument.id}/pdf`,
+    { method: 'GET' },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(response, `PDF 다운로드 실패 (${response.status})`),
+    );
+  }
+
+  const contentType = response.headers.get('Content-Type') || '';
+  if (!contentType.includes('application/pdf')) {
+    throw new Error('PDF 응답 형식이 올바르지 않습니다.');
+  }
+
+  const blob = await response.blob();
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = createDownloadFilename(officialDocument, 'pdf');
   document.body.append(link);
   link.click();
   link.remove();

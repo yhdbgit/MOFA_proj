@@ -82,7 +82,7 @@
           <section
             id="messageList"
             class="message-list"
-            aria-label="민원인과 AI 상담사의 대화"
+            aria-label="민원인과 담당자의 대화"
             aria-live="polite"
           >
             <div class="chat-empty">
@@ -93,7 +93,56 @@
               </p>
             </div>
           </section>
+
+          <footer class="staff-composer" aria-label="담당자 답변 입력">
+            <label class="staff-composer-label" for="staffReplyInput">
+              담당자 답변
+            </label>
+            <div class="staff-composer-row">
+              <textarea
+                id="staffReplyInput"
+                class="staff-reply-input"
+                rows="3"
+                maxlength="4000"
+                placeholder="민원인에게 보낼 답변을 입력하세요."
+              ></textarea>
+              <button
+                id="sendStaffMessageButton"
+                class="staff-send-button"
+                type="button"
+                disabled
+              >
+                전송
+              </button>
+            </div>
+            <p id="staffReplyStatus" class="staff-reply-status" role="status" aria-live="polite"></p>
+          </footer>
         </main>
+
+        <aside class="assistant-panel" aria-label="답변 어시스턴트">
+          <header class="assistant-panel-header">
+            <div>
+              <h2>답변 어시스턴트</h2>
+              <p id="assistantPanelMeta">상담 선택 대기</p>
+            </div>
+            <span id="assistantStatusBadge" class="assistant-status-badge idle">
+              대기
+            </span>
+          </header>
+
+          <div id="assistantPanelContent" class="assistant-panel-content"></div>
+
+          <footer class="assistant-panel-footer">
+            <button
+              id="quoteAssistantReplyButton"
+              class="quote-assistant-button"
+              type="button"
+              disabled
+            >
+              인용
+            </button>
+          </footer>
+        </aside>
 
         <aside
           id="documentPanel"
@@ -139,7 +188,7 @@
               type="button"
               hidden
             >
-              DOCX 다운로드
+              PDF 다운로드
             </button>
           </footer>
         </aside>

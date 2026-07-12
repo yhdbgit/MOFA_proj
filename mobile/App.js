@@ -47,7 +47,7 @@ const TAB_CONFIG = {
     icon: 'radio-button-on-outline',
   },
   [ROUTES.AI_CHAT]: {
-    label: 'AI\n상담사',
+    label: '상담\n접수',
     icon: 'chatbubble-ellipses-outline',
   },
 };

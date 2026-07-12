@@ -7,7 +7,7 @@ const ROUTES = {
   EMBASSY_CONTACTS: '재외공관연락처',
   HOME: '홈',
   LOCATION_SAFETY: '내위치안전정보',
-  AI_CHAT: 'AI상담사',
+  AI_CHAT: '상담접수',
 };
 
 export default ROUTES;

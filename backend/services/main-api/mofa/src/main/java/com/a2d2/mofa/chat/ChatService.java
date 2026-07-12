@@ -1,6 +1,7 @@
 package com.a2d2.mofa.chat;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -70,15 +71,18 @@ public class ChatService {
 		AgentAnalysisResult agentResult = null;
 		if ("CITIZEN".equals(request.senderType())) {
 			agentResult = analyzeCitizenMessage(chatSession, chatMessage);
-			if ("COMPLETED".equals(agentResult.status()) && agentResult.citizenReply() != null) {
+			if ("COMPLETED".equals(agentResult.status())) {
 				chatSession.updateAnalysisMetadata(
 						agentResult.detectedCountry(),
 						agentResult.incidentType(),
 						agentResult.incidentLabel(),
 						agentResult.severity()
 				);
-				addAgentReply(chatSession, agentResult.citizenReply());
+				publishAgentResultReady(chatSession, agentResult);
 				createOfficialDocumentDraftIfUrgent(chatSession, agentResult);
+			}
+			else {
+				publishAgentResultReady(chatSession, agentResult);
 			}
 		}
 
@@ -110,6 +114,7 @@ public class ChatService {
 		List<AgentClient.ConversationMessage> conversationHistory = chatMessageRepository
 				.findByChatSessionIdOrderByCreatedAtAsc(chatSession.getId())
 				.stream()
+				.filter(message -> !"AGENT".equals(message.getSenderType()))
 				.map(message -> new AgentClient.ConversationMessage(message.getSenderType(), message.getContent()))
 				.toList();
 		CitizenProfileResponse profile = citizenProfileService.getProfile(chatSession.getCitizenId());
@@ -134,19 +139,6 @@ public class ChatService {
 				profile.phoneNumber(),
 				profile.gender()
 		);
-	}
-
-	private void addAgentReply(ChatSessionEntity chatSession, String citizenReply) {
-		ChatMessageEntity agentMessage = new ChatMessageEntity(
-				chatSession,
-				"AGENT",
-				citizenReply,
-				Instant.now()
-		);
-
-		chatMessageRepository.save(agentMessage);
-		publishMessageCreated(chatSession, agentMessage);
-		publishAgentResultReady(chatSession);
 	}
 
 	private void createOfficialDocumentDraftIfUrgent(
@@ -191,13 +183,32 @@ public class ChatService {
 		));
 	}
 
-	private void publishAgentResultReady(ChatSessionEntity chatSession) {
+	private void publishAgentResultReady(ChatSessionEntity chatSession, AgentAnalysisResult agentResult) {
+		Map<String, Object> payload = new LinkedHashMap<>();
+		payload.put("status", agentResult.status());
+		putIfPresent(payload, "agentRunId", agentResult.agentRunId());
+		putIfPresent(payload, "severity", agentResult.severity());
+		putIfPresent(payload, "detectedCountry", agentResult.detectedCountry());
+		putIfPresent(payload, "incidentType", agentResult.incidentType());
+		putIfPresent(payload, "incidentLabel", agentResult.incidentLabel());
+		putIfPresent(payload, "citizenReply", agentResult.citizenReply());
+		putIfPresent(payload, "recommendedActions", agentResult.recommendedActions());
+		putIfPresent(payload, "ragSources", agentResult.ragSources());
+		putIfPresent(payload, "generatedAt", agentResult.generatedAt());
+		putIfPresent(payload, "errorMessage", agentResult.errorMessage());
+
 		eventPublisher.publish(new NotificationEvent(
 				"AGENT_RESULT_READY",
 				chatSession.getId(),
 				Instant.now(),
-				Map.of("status", "COMPLETED")
+				payload
 		));
+	}
+
+	private void putIfPresent(Map<String, Object> payload, String key, Object value) {
+		if (value != null) {
+			payload.put(key, value);
+		}
 	}
 
 	private void publishDocumentDraftFailed(ChatSessionEntity chatSession, RuntimeException exception) {

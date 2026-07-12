@@ -200,7 +200,7 @@ function AiChatInput({
           value={value}
           onChangeText={onChangeText}
           onSubmitEditing={onSubmit}
-          placeholder="AI 상담사에게 무엇이든 물어보세요."
+          placeholder="상담사에게 전달할 내용을 입력하세요."
           placeholderTextColor={HOME_COLORS.placeholder}
           returnKeyType="send"
           autoCorrect={false}
@@ -228,7 +228,7 @@ function AiChatInput({
         <TouchableOpacity
           activeOpacity={0.8}
           accessibilityRole="button"
-          accessibilityLabel="AI 상담사 화면으로 이동"
+          accessibilityLabel="상담 접수 화면으로 이동"
           onPress={onSubmit}
           style={styles.chatSubmitButton}
         >
@@ -815,7 +815,7 @@ export default function HomeScreen({ navigation }) {
 
     Keyboard.dismiss();
 
-    // NAVIGATION CONTRACT: 홈에서 입력한 질문은 AI 상담 탭의 initialMessage로 넘긴다.
+    // NAVIGATION CONTRACT: 홈에서 입력한 질문은 상담 접수 탭의 initialMessage로 넘긴다.
     // ChatScreen은 이 값을 최초 한 번 자동 전송한다.
     navigateToRoute(
       ROUTES.AI_CHAT,

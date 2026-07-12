@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -74,6 +76,14 @@ class ChatDocumentFailureTests {
 		assertThat(response.agentResult()).isNotNull();
 		assertThat(response.agentResult().status()).isEqualTo("COMPLETED");
 		assertThat(response.agentResult().citizenReply()).contains("공관");
+		verify(chatMessageRepository, never()).save(argThat(message ->
+				message != null && "AGENT".equals(message.getSenderType())
+		));
+		verify(eventPublisher).publish(argThat(event ->
+				event != null &&
+						"AGENT_RESULT_READY".equals(event.type()) &&
+						"가까운 공관에 연락해 주세요.".equals(event.payload().get("citizenReply"))
+		));
 		assertThatCode(() -> verify(officialDocumentService).createDraftIfAbsent(chatSession.getId()))
 				.doesNotThrowAnyException();
 	}
