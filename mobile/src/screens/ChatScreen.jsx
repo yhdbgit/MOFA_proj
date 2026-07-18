@@ -11,7 +11,6 @@ import React, {
   useState,
 } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -31,7 +30,7 @@ import {
 const INITIAL_ASSISTANT_MESSAGE = {
   id: 'welcome',
   role: 'assistant',
-  text: '안녕하세요. 영사콜센터 상담 접수입니다. 현재 계신 국가/도시와 상황을 알려주시면 상담사가 확인 후 답변드리겠습니다.',
+  text: '안녕하세요. 영사안전콜센터 상담 접수입니다. 현재 계신 국가/도시와 상황을 알려주시면 상담사가 확인 후 답변드리겠습니다.',
 };
 
 const STAFF_MESSAGE_POLL_INTERVAL_MS = 2500;
@@ -187,7 +186,6 @@ export default function ChatScreen({ navigation, route }) {
           <Ionicons name="headset-outline" size={17} color="#FFFFFF" />
         </View>
         <View style={styles.typingBubble}>
-          <ActivityIndicator size="small" color="#00B4C8" />
           <Text style={styles.typingText}>상담 접수 중</Text>
         </View>
       </View>
@@ -257,7 +255,7 @@ export default function ChatScreen({ navigation, route }) {
             <Ionicons name="shield-checkmark-outline" size={22} color="#FFFFFF" />
           </View>
           <View style={styles.headerTextBlock}>
-            <Text style={styles.headerTitle}>영사콜센터 상담 접수</Text>
+            <Text style={styles.headerTitle}>영사안전콜센터 상담 접수</Text>
             <Text style={styles.headerSubtitle}>상담사 확인 후 답변</Text>
           </View>
         </View>
